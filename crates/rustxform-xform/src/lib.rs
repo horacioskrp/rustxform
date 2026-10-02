@@ -1,9 +1,9 @@
 //! Emit XForm XML from the [`Survey`] model.
 //!
-//! Produces the `<model>` (primary instance, choice secondary instances and
-//! binds) and the `<body>` controls. Phase 3 walks the node tree: groups
-//! nest, and repeats emit a `jr:template` plus one live instance. Multi-
-//! language translations arrive later.
+//! Produces the `<model>` (optional `<itext>`, primary instance, choice
+//! secondary instances and binds) and the `<body>` controls. A single-language
+//! form uses inline labels; a multi-language form switches to `<itext>` with
+//! `jr:itext(...)` references.
 
 use std::collections::HashMap;
 
@@ -36,6 +36,7 @@ type W = Writer<Vec<u8>>;
 pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
     let title = survey.settings.title.as_deref().unwrap_or_default();
     let form_id = survey.settings.form_id.as_deref().unwrap_or(ROOT);
+    let multilingual = !survey.languages.is_empty();
 
     let mut w = Writer::new(Vec::new());
     w.write_event(Event::Decl(BytesDecl::new("1.0", None, None)))?;
@@ -46,27 +47,30 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
     }
     w.write_event(Event::Start(html))?;
 
-    w.write_event(Event::Start(BytesStart::new("h:head")))?;
+    open(&mut w, "h:head")?;
     text_element(&mut w, "h:title", title)?;
 
     let mut model = BytesStart::new("model");
     model.push_attribute(("odk:xforms-version", "1.0.0"));
     w.write_event(Event::Start(model))?;
 
+    if multilingual {
+        write_itext(&mut w, survey)?;
+    }
     write_primary_instance(&mut w, survey, form_id)?;
-    write_choice_instances(&mut w, survey)?;
+    write_choice_instances(&mut w, survey, multilingual)?;
     let index = build_index(&survey.children);
     write_binds(&mut w, &survey.children, &format!("/{ROOT}"), &index)?;
     write_instance_id_bind(&mut w)?;
 
-    w.write_event(Event::End(BytesEnd::new("model")))?;
-    w.write_event(Event::End(BytesEnd::new("h:head")))?;
+    close(&mut w, "model")?;
+    close(&mut w, "h:head")?;
 
-    w.write_event(Event::Start(BytesStart::new("h:body")))?;
-    write_body(&mut w, &survey.children, &format!("/{ROOT}"))?;
-    w.write_event(Event::End(BytesEnd::new("h:body")))?;
+    open(&mut w, "h:body")?;
+    write_body(&mut w, &survey.children, &format!("/{ROOT}"), multilingual)?;
+    close(&mut w, "h:body")?;
 
-    w.write_event(Event::End(BytesEnd::new("h:html")))?;
+    close(&mut w, "h:html")?;
 
     Ok(String::from_utf8(w.into_inner())?)
 }
@@ -82,11 +86,97 @@ const NAMESPACES: &[(&str, &str)] = &[
     ("xmlns:odk", "http://www.opendatakit.org/xforms"),
 ];
 
+// --- Translations (itext) ---------------------------------------------------
+
+/// The default language: the configured one if declared, else the first.
+fn default_language(survey: &Survey) -> Option<&str> {
+    match survey.settings.default_language.as_deref() {
+        Some(d) if survey.languages.iter().any(|l| l == d) => Some(d),
+        _ => survey.languages.first().map(String::as_str),
+    }
+}
+
+/// Emit the `<itext>` block: one `<translation>` per language, choice texts
+/// first, then question label/hint texts in document order.
+fn write_itext(w: &mut W, survey: &Survey) -> Result<(), XformError> {
+    let default = default_language(survey);
+    let mut lists: Vec<&str> = Vec::new();
+    collect_lists(&survey.children, &mut lists);
+
+    open(w, "itext")?;
+    for lang in &survey.languages {
+        let mut translation = BytesStart::new("translation");
+        translation.push_attribute(("lang", lang.as_str()));
+        if Some(lang.as_str()) == default {
+            translation.push_attribute(("default", "true()"));
+        }
+        w.write_event(Event::Start(translation))?;
+
+        for list in &lists {
+            if let Some(choice_list) = survey.choice_list(list) {
+                for (i, item) in choice_list.items.iter().enumerate() {
+                    let id = format!("{list}-{i}");
+                    write_text(w, &id, item.label.for_lang(lang).unwrap_or_default())?;
+                }
+            }
+        }
+        write_itext_questions(w, &survey.children, &format!("/{ROOT}"), lang)?;
+
+        close(w, "translation")?;
+    }
+    close(w, "itext")?;
+    Ok(())
+}
+
+/// Emit `<text id><value>…</value></text>` entries for questions under `parent`.
+fn write_itext_questions(
+    w: &mut W,
+    nodes: &[Node],
+    parent: &str,
+    lang: &str,
+) -> Result<(), XformError> {
+    for node in nodes {
+        match node {
+            Node::Question(q) => {
+                let path = format!("{parent}/{}", q.name);
+                if q.label.is_multilingual() {
+                    write_text(
+                        w,
+                        &format!("{path}:label"),
+                        q.label.for_lang(lang).unwrap_or_default(),
+                    )?;
+                }
+                if q.hint.is_multilingual() {
+                    write_text(
+                        w,
+                        &format!("{path}:hint"),
+                        q.hint.for_lang(lang).unwrap_or_default(),
+                    )?;
+                }
+            }
+            Node::Group(c) | Node::Repeat(c) => {
+                write_itext_questions(w, &c.children, &format!("{parent}/{}", c.name), lang)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Emit a single `<text id="..">` with a `<value>`.
+fn write_text(w: &mut W, id: &str, value: &str) -> Result<(), XformError> {
+    let mut text = BytesStart::new("text");
+    text.push_attribute(("id", id));
+    w.write_event(Event::Start(text))?;
+    text_element(w, "value", value)?;
+    close(w, "text")?;
+    Ok(())
+}
+
 // --- Primary instance -------------------------------------------------------
 
 /// `<instance><data id="..">…tree…<meta>…</meta></data></instance>`.
 fn write_primary_instance(w: &mut W, survey: &Survey, form_id: &str) -> Result<(), XformError> {
-    w.write_event(Event::Start(BytesStart::new("instance")))?;
+    open(w, "instance")?;
     let mut root = BytesStart::new(ROOT);
     root.push_attribute(("id", form_id));
     w.write_event(Event::Start(root))?;
@@ -95,11 +185,11 @@ fn write_primary_instance(w: &mut W, survey: &Survey, form_id: &str) -> Result<(
         write_instance_node(w, node)?;
     }
 
-    w.write_event(Event::Start(BytesStart::new("meta")))?;
+    open(w, "meta")?;
     w.write_event(Event::Empty(BytesStart::new("instanceID")))?;
-    w.write_event(Event::End(BytesEnd::new("meta")))?;
-    w.write_event(Event::End(BytesEnd::new(ROOT)))?;
-    w.write_event(Event::End(BytesEnd::new("instance")))?;
+    close(w, "meta")?;
+    close(w, ROOT)?;
+    close(w, "instance")?;
     Ok(())
 }
 
@@ -134,7 +224,11 @@ fn write_instance_container(w: &mut W, c: &Container, template: bool) -> Result<
 // --- Choice secondary instances --------------------------------------------
 
 /// Secondary instances for each referenced choice list, in first-use order.
-fn write_choice_instances(w: &mut W, survey: &Survey) -> Result<(), XformError> {
+fn write_choice_instances(
+    w: &mut W,
+    survey: &Survey,
+    multilingual: bool,
+) -> Result<(), XformError> {
     let mut seen: Vec<&str> = Vec::new();
     collect_lists(&survey.children, &mut seen);
 
@@ -145,17 +239,22 @@ fn write_choice_instances(w: &mut W, survey: &Survey) -> Result<(), XformError> 
         let mut instance = BytesStart::new("instance");
         instance.push_attribute(("id", list));
         w.write_event(Event::Start(instance))?;
-        w.write_event(Event::Start(BytesStart::new("root")))?;
-        for choice in &choice_list.items {
-            w.write_event(Event::Start(BytesStart::new("item")))?;
-            text_element(w, "name", &choice.name)?;
-            if let Some(label) = &choice.label {
-                text_element(w, "label", label)?;
+        open(w, "root")?;
+        for (i, choice) in choice_list.items.iter().enumerate() {
+            open(w, "item")?;
+            if multilingual {
+                text_element(w, "itextId", &format!("{list}-{i}"))?;
+                text_element(w, "name", &choice.name)?;
+            } else {
+                text_element(w, "name", &choice.name)?;
+                if let Some(label) = choice.label.single() {
+                    text_element(w, "label", label)?;
+                }
             }
-            w.write_event(Event::End(BytesEnd::new("item")))?;
+            close(w, "item")?;
         }
-        w.write_event(Event::End(BytesEnd::new("root")))?;
-        w.write_event(Event::End(BytesEnd::new("instance")))?;
+        close(w, "root")?;
+        close(w, "instance")?;
     }
     Ok(())
 }
@@ -283,6 +382,17 @@ fn flag_value(raw: Option<&str>, resolve: &impl Fn(&str) -> Option<String>) -> O
     }
 }
 
+/// Write the fixed `instanceID` metadata bind.
+fn write_instance_id_bind(w: &mut W) -> Result<(), XformError> {
+    let mut bind = BytesStart::new("bind");
+    bind.push_attribute(("nodeset", format!("/{ROOT}/meta/instanceID").as_str()));
+    bind.push_attribute(("type", "string"));
+    bind.push_attribute(("readonly", "true()"));
+    bind.push_attribute(("jr:preload", "uid"));
+    w.write_event(Event::Empty(bind))?;
+    Ok(())
+}
+
 /// A step on the path from the instance root to a node.
 #[derive(Clone)]
 struct Step {
@@ -357,33 +467,28 @@ fn reference_xpath(context: &[Step], target: &[Step]) -> String {
     }
 }
 
-/// Write the fixed `instanceID` metadata bind.
-fn write_instance_id_bind(w: &mut W) -> Result<(), XformError> {
-    let mut bind = BytesStart::new("bind");
-    bind.push_attribute(("nodeset", format!("/{ROOT}/meta/instanceID").as_str()));
-    bind.push_attribute(("type", "string"));
-    bind.push_attribute(("readonly", "true()"));
-    bind.push_attribute(("jr:preload", "uid"));
-    w.write_event(Event::Empty(bind))?;
-    Ok(())
-}
-
 // --- Body -------------------------------------------------------------------
 
 /// Emit body controls for `nodes` under `parent`.
-fn write_body(w: &mut W, nodes: &[Node], parent: &str) -> Result<(), XformError> {
+fn write_body(w: &mut W, nodes: &[Node], parent: &str, ml: bool) -> Result<(), XformError> {
     for node in nodes {
         match node {
-            Node::Question(q) => write_control(w, q, &format!("{parent}/{}", q.name))?,
-            Node::Group(g) => write_group(w, g, &format!("{parent}/{}", g.name), false)?,
-            Node::Repeat(r) => write_group(w, r, &format!("{parent}/{}", r.name), true)?,
+            Node::Question(q) => write_control(w, q, &format!("{parent}/{}", q.name), ml)?,
+            Node::Group(g) => write_group(w, g, &format!("{parent}/{}", g.name), false, ml)?,
+            Node::Repeat(r) => write_group(w, r, &format!("{parent}/{}", r.name), true, ml)?,
         }
     }
     Ok(())
 }
 
 /// Write `<group ref="..">`, with an inner `<repeat>` when `repeat` is set.
-fn write_group(w: &mut W, c: &Container, path: &str, repeat: bool) -> Result<(), XformError> {
+fn write_group(
+    w: &mut W,
+    c: &Container,
+    path: &str,
+    repeat: bool,
+    ml: bool,
+) -> Result<(), XformError> {
     let mut group = BytesStart::new("group");
     group.push_attribute(("ref", path));
     w.write_event(Event::Start(group))?;
@@ -395,52 +500,65 @@ fn write_group(w: &mut W, c: &Container, path: &str, repeat: bool) -> Result<(),
         let mut r = BytesStart::new("repeat");
         r.push_attribute(("nodeset", path));
         w.write_event(Event::Start(r))?;
-        write_body(w, &c.children, path)?;
-        w.write_event(Event::End(BytesEnd::new("repeat")))?;
+        write_body(w, &c.children, path, ml)?;
+        close(w, "repeat")?;
     } else {
-        write_body(w, &c.children, path)?;
+        write_body(w, &c.children, path, ml)?;
     }
 
-    w.write_event(Event::End(BytesEnd::new("group")))?;
+    close(w, "group")?;
     Ok(())
 }
 
 /// Write the body control for a question (nothing for data-only types).
-fn write_control(w: &mut W, question: &Question, reference: &str) -> Result<(), XformError> {
+fn write_control(
+    w: &mut W,
+    question: &Question,
+    reference: &str,
+    ml: bool,
+) -> Result<(), XformError> {
     match &question.kind {
         Kind::Builtin(b) => match b.control {
             None => Ok(()),
-            Some(Control::Input) => simple_control(w, "input", reference, question, &[]),
-            Some(Control::Trigger) => simple_control(w, "trigger", reference, question, &[]),
-            Some(Control::Upload { mediatype }) => simple_control(
+            Some(Control::Input) => control(w, "input", reference, question, ml, &[]),
+            Some(Control::Trigger) => control(w, "trigger", reference, question, ml, &[]),
+            Some(Control::Upload { mediatype }) => control(
                 w,
                 "upload",
                 reference,
                 question,
+                ml,
                 &[("mediatype", mediatype)],
             ),
         },
-        Kind::Select { multiple, list } => write_select(w, *multiple, list, reference, question),
+        Kind::Select { multiple, list } => {
+            write_select(w, *multiple, list, reference, question, ml)
+        }
         Kind::Unknown(_) => Ok(()),
     }
 }
 
-/// Write `<tag ref=".." extra..>[<label>..</label>]</tag>`.
-fn simple_control(
+/// Write `<tag ref=".." [appearance] extra..>[label][hint]</tag>`.
+fn control(
     w: &mut W,
     tag: &str,
     reference: &str,
     question: &Question,
+    ml: bool,
     extra: &[(&str, &str)],
 ) -> Result<(), XformError> {
-    let mut control = BytesStart::new(tag);
-    control.push_attribute(("ref", reference));
-    for attr in extra {
-        control.push_attribute(*attr);
+    let mut element = BytesStart::new(tag);
+    element.push_attribute(("ref", reference));
+    if let Some(appearance) = &question.appearance {
+        element.push_attribute(("appearance", appearance.as_str()));
     }
-    w.write_event(Event::Start(control))?;
-    write_label(w, question)?;
-    w.write_event(Event::End(BytesEnd::new(tag)))?;
+    for attr in extra {
+        element.push_attribute(*attr);
+    }
+    w.write_event(Event::Start(element))?;
+    write_label(w, question, reference, ml)?;
+    write_hint(w, question, reference, ml)?;
+    close(w, tag)?;
     Ok(())
 }
 
@@ -451,33 +569,61 @@ fn write_select(
     list: &str,
     reference: &str,
     question: &Question,
+    ml: bool,
 ) -> Result<(), XformError> {
     let tag = if multiple { "select" } else { "select1" };
-    let mut control = BytesStart::new(tag);
-    control.push_attribute(("ref", reference));
-    w.write_event(Event::Start(control))?;
-    write_label(w, question)?;
+    let mut element = BytesStart::new(tag);
+    element.push_attribute(("ref", reference));
+    if let Some(appearance) = &question.appearance {
+        element.push_attribute(("appearance", appearance.as_str()));
+    }
+    w.write_event(Event::Start(element))?;
+    write_label(w, question, reference, ml)?;
+    write_hint(w, question, reference, ml)?;
 
-    // Build the tag from raw content so the apostrophes in the nodeset are
-    // emitted literally (matching reference output) rather than as `&apos;`.
+    // Raw content keeps the apostrophes in the nodeset literal (not `&apos;`).
     let itemset = BytesStart::from_content(
         format!("itemset nodeset=\"instance('{list}')/root/item\""),
         "itemset".len(),
     );
     w.write_event(Event::Start(itemset))?;
     ref_element(w, "value", "name")?;
-    ref_element(w, "label", "label")?;
-    w.write_event(Event::End(BytesEnd::new("itemset")))?;
+    if ml {
+        ref_element(w, "label", "jr:itext(itextId)")?;
+    } else {
+        ref_element(w, "label", "label")?;
+    }
+    close(w, "itemset")?;
 
-    w.write_event(Event::End(BytesEnd::new(tag)))?;
+    close(w, tag)?;
     Ok(())
 }
 
-/// Write a question's `<label>` when it has one.
-fn write_label(w: &mut W, question: &Question) -> Result<(), XformError> {
-    if let Some(label) = &question.label {
-        text_element(w, "label", label)?;
+/// Write a control's `<label>`: an itext reference when multilingual, else
+/// inline text.
+fn write_label(w: &mut W, q: &Question, reference: &str, ml: bool) -> Result<(), XformError> {
+    if ml && q.label.is_multilingual() {
+        write_itext_ref(w, "label", &format!("{reference}:label"))?;
+    } else if let Some(text) = q.label.single() {
+        text_element(w, "label", text)?;
     }
+    Ok(())
+}
+
+/// Write a control's `<hint>` when present.
+fn write_hint(w: &mut W, q: &Question, reference: &str, ml: bool) -> Result<(), XformError> {
+    if ml && q.hint.is_multilingual() {
+        write_itext_ref(w, "hint", &format!("{reference}:hint"))?;
+    } else if let Some(text) = q.hint.single() {
+        text_element(w, "hint", text)?;
+    }
+    Ok(())
+}
+
+/// Write `<tag ref="jr:itext('id')"/>` with literal apostrophes.
+fn write_itext_ref(w: &mut W, tag: &str, id: &str) -> Result<(), XformError> {
+    let element = BytesStart::from_content(format!("{tag} ref=\"jr:itext('{id}')\""), tag.len());
+    w.write_event(Event::Empty(element))?;
     Ok(())
 }
 
@@ -493,6 +639,18 @@ fn ref_element(w: &mut W, tag: &str, value: &str) -> Result<(), XformError> {
 fn text_element(w: &mut W, tag: &str, text: &str) -> Result<(), XformError> {
     w.write_event(Event::Start(BytesStart::new(tag)))?;
     w.write_event(Event::Text(BytesText::new(text)))?;
+    w.write_event(Event::End(BytesEnd::new(tag)))?;
+    Ok(())
+}
+
+/// Write an opening tag with no attributes.
+fn open(w: &mut W, tag: &str) -> Result<(), XformError> {
+    w.write_event(Event::Start(BytesStart::new(tag)))?;
+    Ok(())
+}
+
+/// Write a closing tag.
+fn close(w: &mut W, tag: &str) -> Result<(), XformError> {
     w.write_event(Event::End(BytesEnd::new(tag)))?;
     Ok(())
 }

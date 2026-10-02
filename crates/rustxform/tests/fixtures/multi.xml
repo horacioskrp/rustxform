@@ -1,0 +1,81 @@
+<?xml version="1.0"?>
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms" xmlns:odk="http://www.opendatakit.org/xforms">
+  <h:head>
+    <h:title>Multi</h:title>
+    <model odk:xforms-version="1.0.0">
+      <itext>
+        <translation lang="English (en)" default="true()">
+          <text id="yn-0">
+            <value>Yes</value>
+          </text>
+          <text id="yn-1">
+            <value>No</value>
+          </text>
+          <text id="/data/fullname:label">
+            <value>Full name</value>
+          </text>
+          <text id="/data/fullname:hint">
+            <value>As on ID</value>
+          </text>
+          <text id="/data/ok:label">
+            <value>Agree?</value>
+          </text>
+        </translation>
+        <translation lang="French (fr)">
+          <text id="yn-0">
+            <value>Oui</value>
+          </text>
+          <text id="yn-1">
+            <value>Non</value>
+          </text>
+          <text id="/data/fullname:label">
+            <value>Nom complet</value>
+          </text>
+          <text id="/data/fullname:hint">
+            <value>Comme piece</value>
+          </text>
+          <text id="/data/ok:label">
+            <value>Daccord?</value>
+          </text>
+        </translation>
+      </itext>
+      <instance>
+        <data id="multi">
+          <fullname/>
+          <ok/>
+          <meta>
+            <instanceID/>
+          </meta>
+        </data>
+      </instance>
+      <instance id="yn">
+        <root>
+          <item>
+            <itextId>yn-0</itextId>
+            <name>yes</name>
+          </item>
+          <item>
+            <itextId>yn-1</itextId>
+            <name>no</name>
+          </item>
+        </root>
+      </instance>
+      <bind nodeset="/data/fullname" type="string"/>
+      <bind nodeset="/data/ok" type="string"/>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" jr:preload="uid"/>
+    </model>
+  </h:head>
+  <h:body>
+    <input ref="/data/fullname" appearance="multiline">
+      <label ref="jr:itext('/data/fullname:label')"/>
+      <hint ref="jr:itext('/data/fullname:hint')"/>
+    </input>
+    <select1 ref="/data/ok" appearance="minimal">
+      <label ref="jr:itext('/data/ok:label')"/>
+      <itemset nodeset="instance('yn')/root/item">
+        <value ref="name"/>
+        <label ref="jr:itext(itextId)"/>
+      </itemset>
+    </select1>
+  </h:body>
+</h:html>

@@ -1,11 +1,12 @@
 //! Normalize a raw [`Workbook`] into the [`Survey`] model.
 //!
-//! This is the semantic core: alias resolution, type parsing, group/repeat
-//! nesting, choices and settings. Phase 3 builds the node tree from
-//! `begin_group`/`begin_repeat` markers.
+//! This is the semantic core: type parsing, group/repeat nesting, choices,
+//! settings and localization. Phase 5 reads `label`/`hint` column families
+//! (with `::Lang` qualifiers) and collects the form's languages.
 
 use rustxform_core::{
-    Choice, ChoiceList, Container, Kind, Node, Question, Settings, Survey, resolve_builtin,
+    Choice, ChoiceList, Container, Kind, Localized, Node, Question, Settings, Survey,
+    resolve_builtin,
 };
 use rustxform_reader::{Sheet, Workbook};
 
@@ -33,6 +34,7 @@ pub fn workbook_to_survey(workbook: &Workbook) -> Result<Survey, ParseError> {
     if let Some(sheet) = workbook.sheet("survey") {
         survey.children = parse_nodes(sheet);
     }
+    survey.languages = collect_languages(workbook.sheet("survey"), workbook.sheet("choices"));
 
     Ok(survey)
 }
@@ -60,6 +62,72 @@ fn parse_settings(sheet: &Sheet) -> Settings {
     settings
 }
 
+/// Indices of a `label`/`hint` column family: the plain column plus any
+/// language-qualified ones.
+#[derive(Default)]
+struct LocColumns {
+    plain: Option<usize>,
+    langs: Vec<(String, usize)>,
+}
+
+/// Locate a localizable column family (`base` is `label` or `hint`).
+fn loc_columns(header: &[String], base: &str) -> LocColumns {
+    let prefix = format!("{base}::");
+    let mut cols = LocColumns::default();
+    for (i, head) in header.iter().enumerate() {
+        if head == base {
+            cols.plain = Some(i);
+        } else if let Some(lang) = head.strip_prefix(&prefix) {
+            cols.langs.push((lang.trim().to_owned(), i));
+        }
+    }
+    cols
+}
+
+/// Build a [`Localized`] value for a row from a column family.
+fn localized(cols: &LocColumns, row: &[String]) -> Localized {
+    let get = |i: usize| row.get(i).map_or("", String::as_str);
+    Localized {
+        default: cols
+            .plain
+            .map(get)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned),
+        langs: cols
+            .langs
+            .iter()
+            .filter_map(|(lang, i)| {
+                let text = get(*i);
+                (!text.is_empty()).then(|| (lang.clone(), text.to_owned()))
+            })
+            .collect(),
+    }
+}
+
+/// Collect declared languages in order across the survey and choices sheets.
+fn collect_languages(survey: Option<&Sheet>, choices: Option<&Sheet>) -> Vec<String> {
+    let mut languages: Vec<String> = Vec::new();
+    let mut add = |header: &[String], bases: &[&str]| {
+        for head in header {
+            if let Some((base, lang)) = head.split_once("::") {
+                if bases.contains(&base.trim()) {
+                    let lang = lang.trim().to_owned();
+                    if !languages.contains(&lang) {
+                        languages.push(lang);
+                    }
+                }
+            }
+        }
+    };
+    if let Some(header) = survey.and_then(|s| s.rows.first()) {
+        add(header, &["label", "hint"]);
+    }
+    if let Some(header) = choices.and_then(|s| s.rows.first()) {
+        add(header, &["label"]);
+    }
+    languages
+}
+
 /// An open group/repeat being accumulated on the parse stack.
 enum Frame {
     Group(Container),
@@ -74,12 +142,15 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
     let column = |name: &str| header.iter().position(|h| h == name);
     let type_col = column("type");
     let name_col = column("name");
-    let label_col = column("label");
+    let plain_label_col = column("label");
+    let appearance_col = column("appearance");
     let calc_col = column("calculation");
     let relevant_col = column("relevant");
     let constraint_col = column("constraint");
     let required_col = column("required");
     let readonly_col = column("read_only").or_else(|| column("readonly"));
+    let label_cols = loc_columns(header, "label");
+    let hint_cols = loc_columns(header, "hint");
 
     let mut root: Vec<Node> = Vec::new();
     let mut stack: Vec<Frame> = Vec::new();
@@ -92,7 +163,7 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
         }
         let container = || Container {
             name: cell(name_col).to_owned(),
-            label: optional(cell(label_col)),
+            label: optional(cell(plain_label_col)),
             children: Vec::new(),
         };
 
@@ -113,7 +184,9 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
                 let question = Question {
                     kind: parse_kind(type_token),
                     name: cell(name_col).to_owned(),
-                    label: optional(cell(label_col)),
+                    label: localized(&label_cols, row),
+                    hint: localized(&hint_cols, row),
+                    appearance: optional(cell(appearance_col)),
                     calculation: optional(cell(calc_col)),
                     relevant: optional(cell(relevant_col)),
                     constraint: optional(cell(constraint_col)),
@@ -172,7 +245,7 @@ fn parse_choices(sheet: &Sheet) -> Vec<ChoiceList> {
     let column = |name: &str| header.iter().position(|h| h == name);
     let list_col = column("list_name");
     let name_col = column("name");
-    let label_col = column("label");
+    let label_cols = loc_columns(header, "label");
 
     let mut lists: Vec<ChoiceList> = Vec::new();
     for row in data {
@@ -184,7 +257,7 @@ fn parse_choices(sheet: &Sheet) -> Vec<ChoiceList> {
         }
         let choice = Choice {
             name: cell(name_col).to_owned(),
-            label: optional(cell(label_col)),
+            label: localized(&label_cols, row),
         };
         match lists.iter_mut().find(|l| l.name == list) {
             Some(existing) => existing.items.push(choice),

@@ -11,7 +11,7 @@ golden tests (compile a form, compare the XForm after XML canonicalization).
 | 2 | Question types & choices | ✅ done |
 | 3 | Groups & repeats | ✅ done |
 | 4 | Expressions & `${ref}` rewriting | ✅ done |
-| 5 | Multilingual labels & advanced columns | ⬜ |
+| 5 | Multilingual labels & advanced columns | ✅ done |
 | 6 | XLSX/XLS/CSV readers & CLI parity | ⬜ |
 | 7 | Validations | ⬜ |
 
@@ -52,12 +52,13 @@ A flat form with `text` / `integer` / `note` questions compiles end to end.
 - [x] Applied to `relevant`/`constraint`/`required`/`read_only`/`calculation`
 - [x] **GO:** logic/references golden fixture passes
 
-## Phase 5 — Multilingual & advanced columns
+## Phase 5 — Multilingual & advanced columns ✅
 
-- [ ] `label::Lang`, `hint`, `constraint_message`, media columns
-- [ ] Multi-language `<itext>` and default language
-- [ ] `parameters`, `appearance`, full `settings`
-- [ ] **GO:** translation/parameter fixtures pass
+- [x] `label::Lang` / `hint::Lang` → `<itext>` translations, default language
+- [x] Choice itext (`itextId`) and `jr:itext(...)` label/hint references
+- [x] `appearance` on controls; single-language forms keep inline labels
+- [x] **GO:** multilingual golden fixture passes
+- [ ] Deferred: `constraint_message`, media columns, `parameters`, `${}` label outputs
 
 ## Phase 6 — Binary readers & CLI
 

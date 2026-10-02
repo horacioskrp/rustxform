@@ -17,6 +17,48 @@ pub struct Settings {
     pub default_language: Option<String>,
 }
 
+/// Localizable text from a `label`/`hint` column family.
+///
+/// A plain `label` column fills [`default`](Self::default); language-qualified
+/// `label::Lang` columns fill [`langs`](Self::langs). The two are mutually
+/// exclusive in practice.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Localized {
+    /// Text from an unqualified column, if any.
+    pub default: Option<String>,
+    /// Per-language texts `(language, text)`, in language order.
+    pub langs: Vec<(String, String)>,
+}
+
+impl Localized {
+    /// `true` when no text is present at all.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.default.is_none() && self.langs.is_empty()
+    }
+
+    /// `true` when language-qualified texts are present.
+    #[must_use]
+    pub fn is_multilingual(&self) -> bool {
+        !self.langs.is_empty()
+    }
+
+    /// The unqualified single-language text, if any.
+    #[must_use]
+    pub fn single(&self) -> Option<&str> {
+        self.default.as_deref()
+    }
+
+    /// The text for a given language, if any.
+    #[must_use]
+    pub fn for_lang(&self, lang: &str) -> Option<&str> {
+        self.langs
+            .iter()
+            .find(|(l, _)| l == lang)
+            .map(|(_, t)| t.as_str())
+    }
+}
+
 /// The resolved semantics of a question's `type` column.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Kind {
@@ -76,8 +118,12 @@ pub struct Question {
     pub kind: Kind,
     /// Node name; becomes the instance element name.
     pub name: String,
-    /// Default-language label, if any.
-    pub label: Option<String>,
+    /// Label text (single- or multi-language).
+    pub label: Localized,
+    /// Hint text (single- or multi-language).
+    pub hint: Localized,
+    /// `appearance` column value, if any.
+    pub appearance: Option<String>,
     /// Expression from the `calculation` column, if any.
     pub calculation: Option<String>,
     /// Expression from the `relevant` column, if any.
@@ -95,8 +141,8 @@ pub struct Question {
 pub struct Choice {
     /// Stored value (`name` column).
     pub name: String,
-    /// Display label, if any.
-    pub label: Option<String>,
+    /// Display label (single- or multi-language).
+    pub label: Localized,
 }
 
 /// A named list of choices from the `choices` sheet.
@@ -120,6 +166,10 @@ pub struct Container {
 }
 
 /// A node in the survey tree: a question, a group, or a repeat.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Question is by far the most common node; boxing it would add an allocation on the common path"
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Node {
     /// A leaf question.
@@ -139,6 +189,8 @@ pub struct Survey {
     pub children: Vec<Node>,
     /// Choice lists from the `choices` sheet.
     pub choices: Vec<ChoiceList>,
+    /// Declared languages, in order; empty for a single-language form.
+    pub languages: Vec<String>,
 }
 
 impl Survey {
