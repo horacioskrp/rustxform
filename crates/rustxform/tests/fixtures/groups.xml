@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms" xmlns:odk="http://www.opendatakit.org/xforms">
+  <h:head>
+    <h:title>Groups</h:title>
+    <model odk:xforms-version="1.0.0">
+      <instance>
+        <data id="groups">
+          <personal>
+            <fullname/>
+          </personal>
+          <kids jr:template="">
+            <kid_name/>
+            <kinfo>
+              <kid_age/>
+            </kinfo>
+          </kids>
+          <kids>
+            <kid_name/>
+            <kinfo>
+              <kid_age/>
+            </kinfo>
+          </kids>
+          <meta>
+            <instanceID/>
+          </meta>
+        </data>
+      </instance>
+      <bind nodeset="/data/personal/fullname" type="string"/>
+      <bind nodeset="/data/kids/kid_name" type="string"/>
+      <bind nodeset="/data/kids/kinfo/kid_age" type="int"/>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" jr:preload="uid"/>
+    </model>
+  </h:head>
+  <h:body>
+    <group ref="/data/personal">
+      <label>Personal</label>
+      <input ref="/data/personal/fullname">
+        <label>Name</label>
+      </input>
+    </group>
+    <group ref="/data/kids">
+      <label>Kids</label>
+      <repeat nodeset="/data/kids">
+        <input ref="/data/kids/kid_name">
+          <label>Kid name</label>
+        </input>
+        <group ref="/data/kids/kinfo">
+          <label>Kid info</label>
+          <input ref="/data/kids/kinfo/kid_age">
+            <label>Age</label>
+          </input>
+        </group>
+      </repeat>
+    </group>
+  </h:body>
+</h:html>

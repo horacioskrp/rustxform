@@ -1,10 +1,12 @@
 //! Normalize a raw [`Workbook`] into the [`Survey`] model.
 //!
 //! This is the semantic core: alias resolution, type parsing, group/repeat
-//! nesting, choices and settings. Phase 2 handles the `survey`, `choices` and
-//! `settings` sheets for flat forms; groups and repeats arrive later.
+//! nesting, choices and settings. Phase 3 builds the node tree from
+//! `begin_group`/`begin_repeat` markers.
 
-use rustxform_core::{Choice, ChoiceList, Kind, Question, Settings, Survey, resolve_builtin};
+use rustxform_core::{
+    Choice, ChoiceList, Container, Kind, Node, Question, Settings, Survey, resolve_builtin,
+};
 use rustxform_reader::{Sheet, Workbook};
 
 /// An error produced while normalizing a workbook into a survey.
@@ -29,7 +31,7 @@ pub fn workbook_to_survey(workbook: &Workbook) -> Result<Survey, ParseError> {
         survey.choices = parse_choices(sheet);
     }
     if let Some(sheet) = workbook.sheet("survey") {
-        survey.children = parse_questions(sheet);
+        survey.children = parse_nodes(sheet);
     }
 
     Ok(survey)
@@ -58,8 +60,14 @@ fn parse_settings(sheet: &Sheet) -> Settings {
     settings
 }
 
-/// Read the `survey` sheet rows into questions, skipping typeless rows.
-fn parse_questions(sheet: &Sheet) -> Vec<Question> {
+/// An open group/repeat being accumulated on the parse stack.
+enum Frame {
+    Group(Container),
+    Repeat(Container),
+}
+
+/// Read the `survey` sheet rows into a node tree, honoring group/repeat markers.
+fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
     let Some((header, data)) = sheet.rows.split_first() else {
         return Vec::new();
     };
@@ -69,22 +77,63 @@ fn parse_questions(sheet: &Sheet) -> Vec<Question> {
     let label_col = column("label");
     let calc_col = column("calculation");
 
-    let mut questions = Vec::with_capacity(data.len());
+    let mut root: Vec<Node> = Vec::new();
+    let mut stack: Vec<Frame> = Vec::new();
+
     for row in data {
         let cell = |col: Option<usize>| col.and_then(|i| row.get(i)).map_or("", String::as_str);
-
         let type_token = cell(type_col);
         if type_token.is_empty() {
             continue;
         }
-        questions.push(Question {
-            kind: parse_kind(type_token),
+        let container = || Container {
             name: cell(name_col).to_owned(),
             label: optional(cell(label_col)),
-            calculation: optional(cell(calc_col)),
-        });
+            children: Vec::new(),
+        };
+
+        match type_token {
+            "begin_group" | "begin group" => stack.push(Frame::Group(container())),
+            "begin_repeat" | "begin repeat" => stack.push(Frame::Repeat(container())),
+            "end_group" | "end group" => {
+                if let Some(Frame::Group(group)) = stack.pop() {
+                    place(&mut root, &mut stack, Node::Group(group));
+                }
+            }
+            "end_repeat" | "end repeat" => {
+                if let Some(Frame::Repeat(repeat)) = stack.pop() {
+                    place(&mut root, &mut stack, Node::Repeat(repeat));
+                }
+            }
+            _ => {
+                let question = Question {
+                    kind: parse_kind(type_token),
+                    name: cell(name_col).to_owned(),
+                    label: optional(cell(label_col)),
+                    calculation: optional(cell(calc_col)),
+                };
+                place(&mut root, &mut stack, Node::Question(question));
+            }
+        }
     }
-    questions
+
+    // Flush any unclosed containers, innermost first, so nothing is lost.
+    while let Some(frame) = stack.pop() {
+        let node = match frame {
+            Frame::Group(g) => Node::Group(g),
+            Frame::Repeat(r) => Node::Repeat(r),
+        };
+        place(&mut root, &mut stack, node);
+    }
+    root
+}
+
+/// Append a finished node to the innermost open container, or to the root.
+fn place(root: &mut Vec<Node>, stack: &mut [Frame], node: Node) {
+    match stack.last_mut() {
+        Some(Frame::Group(c) | Frame::Repeat(c)) => c.children.push(node),
+        None => root.push(node),
+    }
 }
 
 /// Resolve a `type` column token into a [`Kind`].

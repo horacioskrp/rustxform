@@ -9,7 +9,7 @@ golden tests (compile a form, compare the XForm after XML canonicalization).
 | 0 | Workspace, CI & conformance harness | ✅ done |
 | 1 | Walking skeleton — one form end to end | ✅ done |
 | 2 | Question types & choices | ✅ done |
-| 3 | Groups & repeats | ⬜ |
+| 3 | Groups & repeats | ✅ done |
 | 4 | Expressions & `${ref}` rewriting | ⬜ |
 | 5 | Multilingual labels & advanced columns | ⬜ |
 | 6 | XLSX/XLS/CSV readers & CLI parity | ⬜ |
@@ -39,10 +39,11 @@ A flat form with `text` / `integer` / `note` questions compiles end to end.
       (start/end/today/deviceid)
 - [x] **GO:** choices and types/metadata golden fixtures pass
 
-## Phase 3 — Groups & repeats
+## Phase 3 — Groups & repeats ✅
 
-- [ ] `begin/end group`, `begin/end repeat`, arbitrary nesting
-- [ ] **GO:** group/repeat fixtures pass
+- [x] `begin/end group`, `begin/end repeat`, arbitrary nesting (tree model)
+- [x] Repeat emits a `jr:template` plus one live instance; full nested paths
+- [x] **GO:** group/repeat golden fixture passes
 
 ## Phase 4 — Expressions & references
 

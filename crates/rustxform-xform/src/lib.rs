@@ -1,13 +1,13 @@
 //! Emit XForm XML from the [`Survey`] model.
 //!
 //! Produces the `<model>` (primary instance, choice secondary instances and
-//! binds) and the `<body>` controls. Phase 2 supports flat forms: built-in
-//! types, metadata preloads, `calculate`, and `select_one`/`select_multiple`
-//! backed by choice lists. Groups, repeats and translations arrive later.
+//! binds) and the `<body>` controls. Phase 3 walks the node tree: groups
+//! nest, and repeats emit a `jr:template` plus one live instance. Multi-
+//! language translations arrive later.
 
 use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
-use rustxform_core::{Control, Kind, Question, Survey};
+use rustxform_core::{Container, Control, Kind, Node, Question, Survey};
 
 /// Name of the primary instance root element.
 const ROOT: &str = "data";
@@ -52,18 +52,14 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
 
     write_primary_instance(&mut w, survey, form_id)?;
     write_choice_instances(&mut w, survey)?;
-    for question in &survey.children {
-        write_bind(&mut w, question)?;
-    }
+    write_binds(&mut w, &survey.children, &format!("/{ROOT}"))?;
     write_instance_id_bind(&mut w)?;
 
     w.write_event(Event::End(BytesEnd::new("model")))?;
     w.write_event(Event::End(BytesEnd::new("h:head")))?;
 
     w.write_event(Event::Start(BytesStart::new("h:body")))?;
-    for question in &survey.children {
-        write_control(&mut w, question)?;
-    }
+    write_body(&mut w, &survey.children, &format!("/{ROOT}"))?;
     w.write_event(Event::End(BytesEnd::new("h:body")))?;
 
     w.write_event(Event::End(BytesEnd::new("h:html")))?;
@@ -82,15 +78,19 @@ const NAMESPACES: &[(&str, &str)] = &[
     ("xmlns:odk", "http://www.opendatakit.org/xforms"),
 ];
 
-/// Primary instance: `<instance><data id="..">…<meta>…</meta></data></instance>`.
+// --- Primary instance -------------------------------------------------------
+
+/// `<instance><data id="..">…tree…<meta>…</meta></data></instance>`.
 fn write_primary_instance(w: &mut W, survey: &Survey, form_id: &str) -> Result<(), XformError> {
     w.write_event(Event::Start(BytesStart::new("instance")))?;
     let mut root = BytesStart::new(ROOT);
     root.push_attribute(("id", form_id));
     w.write_event(Event::Start(root))?;
-    for question in &survey.children {
-        w.write_event(Event::Empty(BytesStart::new(question.name.as_str())))?;
+
+    for node in &survey.children {
+        write_instance_node(w, node)?;
     }
+
     w.write_event(Event::Start(BytesStart::new("meta")))?;
     w.write_event(Event::Empty(BytesStart::new("instanceID")))?;
     w.write_event(Event::End(BytesEnd::new("meta")))?;
@@ -99,23 +99,47 @@ fn write_primary_instance(w: &mut W, survey: &Survey, form_id: &str) -> Result<(
     Ok(())
 }
 
+/// Emit a node into the primary instance.
+fn write_instance_node(w: &mut W, node: &Node) -> Result<(), XformError> {
+    match node {
+        Node::Question(q) => w.write_event(Event::Empty(BytesStart::new(q.name.as_str())))?,
+        Node::Group(g) => write_instance_container(w, g, false)?,
+        Node::Repeat(r) => {
+            // A repeat emits its template plus one live instance.
+            write_instance_container(w, r, true)?;
+            write_instance_container(w, r, false)?;
+        }
+    }
+    Ok(())
+}
+
+/// Emit `<name [jr:template=""]>children…</name>` into the instance.
+fn write_instance_container(w: &mut W, c: &Container, template: bool) -> Result<(), XformError> {
+    let mut start = BytesStart::new(c.name.as_str());
+    if template {
+        start.push_attribute(("jr:template", ""));
+    }
+    w.write_event(Event::Start(start))?;
+    for node in &c.children {
+        write_instance_node(w, node)?;
+    }
+    w.write_event(Event::End(BytesEnd::new(c.name.as_str())))?;
+    Ok(())
+}
+
+// --- Choice secondary instances --------------------------------------------
+
 /// Secondary instances for each referenced choice list, in first-use order.
 fn write_choice_instances(w: &mut W, survey: &Survey) -> Result<(), XformError> {
     let mut seen: Vec<&str> = Vec::new();
-    for question in &survey.children {
-        let Kind::Select { list, .. } = &question.kind else {
-            continue;
-        };
-        if seen.contains(&list.as_str()) {
-            continue;
-        }
-        seen.push(list);
+    collect_lists(&survey.children, &mut seen);
+
+    for list in seen {
         let Some(choice_list) = survey.choice_list(list) else {
             continue;
         };
-
         let mut instance = BytesStart::new("instance");
-        instance.push_attribute(("id", list.as_str()));
+        instance.push_attribute(("id", list));
         w.write_event(Event::Start(instance))?;
         w.write_event(Event::Start(BytesStart::new("root")))?;
         for choice in &choice_list.items {
@@ -132,11 +156,41 @@ fn write_choice_instances(w: &mut W, survey: &Survey) -> Result<(), XformError> 
     Ok(())
 }
 
-/// Write the `<bind>` for a question.
-fn write_bind(w: &mut W, question: &Question) -> Result<(), XformError> {
-    let nodeset = format!("/{ROOT}/{}", question.name);
+/// Collect referenced choice-list names in document order, de-duplicated.
+fn collect_lists<'a>(nodes: &'a [Node], seen: &mut Vec<&'a str>) {
+    for node in nodes {
+        match node {
+            Node::Question(q) => {
+                if let Kind::Select { list, .. } = &q.kind {
+                    if !seen.contains(&list.as_str()) {
+                        seen.push(list);
+                    }
+                }
+            }
+            Node::Group(c) | Node::Repeat(c) => collect_lists(&c.children, seen),
+        }
+    }
+}
+
+// --- Binds ------------------------------------------------------------------
+
+/// Emit binds for every leaf question under `parent`, depth-first.
+fn write_binds(w: &mut W, nodes: &[Node], parent: &str) -> Result<(), XformError> {
+    for node in nodes {
+        match node {
+            Node::Question(q) => write_bind(w, q, &format!("{parent}/{}", q.name))?,
+            Node::Group(c) | Node::Repeat(c) => {
+                write_binds(w, &c.children, &format!("{parent}/{}", c.name))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Write the `<bind nodeset="..">` for a question.
+fn write_bind(w: &mut W, question: &Question, nodeset: &str) -> Result<(), XformError> {
     let mut bind = BytesStart::new("bind");
-    bind.push_attribute(("nodeset", nodeset.as_str()));
+    bind.push_attribute(("nodeset", nodeset));
 
     match &question.kind {
         Kind::Builtin(b) => {
@@ -176,23 +230,59 @@ fn write_instance_id_bind(w: &mut W) -> Result<(), XformError> {
     Ok(())
 }
 
+// --- Body -------------------------------------------------------------------
+
+/// Emit body controls for `nodes` under `parent`.
+fn write_body(w: &mut W, nodes: &[Node], parent: &str) -> Result<(), XformError> {
+    for node in nodes {
+        match node {
+            Node::Question(q) => write_control(w, q, &format!("{parent}/{}", q.name))?,
+            Node::Group(g) => write_group(w, g, &format!("{parent}/{}", g.name), false)?,
+            Node::Repeat(r) => write_group(w, r, &format!("{parent}/{}", r.name), true)?,
+        }
+    }
+    Ok(())
+}
+
+/// Write `<group ref="..">`, with an inner `<repeat>` when `repeat` is set.
+fn write_group(w: &mut W, c: &Container, path: &str, repeat: bool) -> Result<(), XformError> {
+    let mut group = BytesStart::new("group");
+    group.push_attribute(("ref", path));
+    w.write_event(Event::Start(group))?;
+    if let Some(label) = &c.label {
+        text_element(w, "label", label)?;
+    }
+
+    if repeat {
+        let mut r = BytesStart::new("repeat");
+        r.push_attribute(("nodeset", path));
+        w.write_event(Event::Start(r))?;
+        write_body(w, &c.children, path)?;
+        w.write_event(Event::End(BytesEnd::new("repeat")))?;
+    } else {
+        write_body(w, &c.children, path)?;
+    }
+
+    w.write_event(Event::End(BytesEnd::new("group")))?;
+    Ok(())
+}
+
 /// Write the body control for a question (nothing for data-only types).
-fn write_control(w: &mut W, question: &Question) -> Result<(), XformError> {
-    let reference = format!("/{ROOT}/{}", question.name);
+fn write_control(w: &mut W, question: &Question, reference: &str) -> Result<(), XformError> {
     match &question.kind {
         Kind::Builtin(b) => match b.control {
             None => Ok(()),
-            Some(Control::Input) => simple_control(w, "input", &reference, question, &[]),
-            Some(Control::Trigger) => simple_control(w, "trigger", &reference, question, &[]),
+            Some(Control::Input) => simple_control(w, "input", reference, question, &[]),
+            Some(Control::Trigger) => simple_control(w, "trigger", reference, question, &[]),
             Some(Control::Upload { mediatype }) => simple_control(
                 w,
                 "upload",
-                &reference,
+                reference,
                 question,
                 &[("mediatype", mediatype)],
             ),
         },
-        Kind::Select { multiple, list } => write_select(w, *multiple, list, &reference, question),
+        Kind::Select { multiple, list } => write_select(w, *multiple, list, reference, question),
         Kind::Unknown(_) => Ok(()),
     }
 }

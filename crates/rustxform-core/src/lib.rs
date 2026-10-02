@@ -100,16 +100,35 @@ pub struct ChoiceList {
     pub items: Vec<Choice>,
 }
 
-/// A parsed XLSForm survey: settings, children and choice lists.
-///
-/// Children are a flat list of [`Question`] for now; groups and repeats are
-/// introduced in Phase 3.
+/// A container of child nodes: a group (`<group>`) or a repeat (`<repeat>`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Container {
+    /// Node name; becomes the enclosing instance element.
+    pub name: String,
+    /// Default-language label, if any.
+    pub label: Option<String>,
+    /// Ordered child nodes.
+    pub children: Vec<Node>,
+}
+
+/// A node in the survey tree: a question, a group, or a repeat.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Node {
+    /// A leaf question.
+    Question(Question),
+    /// A non-repeating group of nodes.
+    Group(Container),
+    /// A repeating group of nodes.
+    Repeat(Container),
+}
+
+/// A parsed XLSForm survey: settings, a node tree and choice lists.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Survey {
     /// Form-level settings.
     pub settings: Settings,
-    /// Ordered survey children.
-    pub children: Vec<Question>,
+    /// Ordered top-level nodes.
+    pub children: Vec<Node>,
     /// Choice lists from the `choices` sheet.
     pub choices: Vec<ChoiceList>,
 }
