@@ -8,7 +8,7 @@ golden tests (compile a form, compare the XForm after XML canonicalization).
 | ----- | ------------------------------------------- | ------ |
 | 0 | Workspace, CI & conformance harness | ✅ done |
 | 1 | Walking skeleton — one form end to end | ✅ done |
-| 2 | Question types & choices | ⬜ |
+| 2 | Question types & choices | ✅ done |
 | 3 | Groups & repeats | ⬜ |
 | 4 | Expressions & `${ref}` rewriting | ⬜ |
 | 5 | Multilingual labels & advanced columns | ⬜ |
@@ -31,11 +31,13 @@ A flat form with `text` / `integer` / `note` questions compiles end to end.
 - [x] Emit `<instance>`, `<bind>` and `<body>` controls
 - [x] **GO:** the simple-form golden test passes
 
-## Phase 2 — Question types & choices
+## Phase 2 — Question types & choices ✅
 
-- [ ] `select_one` / `select_multiple` with a choices sheet and `<itext>`
-- [ ] Full type table (date/time/geo/media/calculate/acknowledge/range, preloads)
-- [ ] **GO:** question-type fixtures pass
+- [x] `select_one` / `select_multiple` with a choices sheet and secondary instances
+- [x] Type table (text/integer/decimal/date/time/dateTime/geo*/barcode/note/
+      acknowledge/image/audio/video/calculate) and metadata preloads
+      (start/end/today/deviceid)
+- [x] **GO:** choices and types/metadata golden fixtures pass
 
 ## Phase 3 — Groups & repeats
 

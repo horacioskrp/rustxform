@@ -43,10 +43,19 @@ fn skeleton_is_well_formed_xform() {
     assert!(xform.contains("<model"));
 }
 
-#[test]
-fn conformance_simple_text_form() {
-    let md = include_str!("fixtures/simple.md");
-    let expected = include_str!("fixtures/simple.xml");
-    let actual = convert_markdown(md).expect("conversion succeeds");
-    assert_xform_eq(expected, &actual);
+/// Compile `fixtures/<name>.md` and compare to `fixtures/<name>.xml`.
+macro_rules! golden {
+    ($test:ident, $name:literal) => {
+        #[test]
+        fn $test() {
+            let md = include_str!(concat!("fixtures/", $name, ".md"));
+            let expected = include_str!(concat!("fixtures/", $name, ".xml"));
+            let actual = convert_markdown(md).expect("conversion succeeds");
+            assert_xform_eq(expected, &actual);
+        }
+    };
 }
+
+golden!(conformance_simple_text_form, "simple");
+golden!(conformance_choices_form, "choices");
+golden!(conformance_types_and_metadata_form, "types");

@@ -1,0 +1,53 @@
+<?xml version="1.0"?>
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms" xmlns:odk="http://www.opendatakit.org/xforms">
+  <h:head>
+    <h:title>Types</h:title>
+    <model odk:xforms-version="1.0.0">
+      <instance>
+        <data id="types">
+          <start/>
+          <end/>
+          <today/>
+          <deviceid/>
+          <bday/>
+          <loc/>
+          <hello/>
+          <calc/>
+          <ack/>
+          <photo/>
+          <meta>
+            <instanceID/>
+          </meta>
+        </data>
+      </instance>
+      <bind nodeset="/data/start" jr:preload="timestamp" type="dateTime" jr:preloadParams="start"/>
+      <bind nodeset="/data/end" jr:preload="timestamp" type="dateTime" jr:preloadParams="end"/>
+      <bind nodeset="/data/today" jr:preload="date" type="date" jr:preloadParams="today"/>
+      <bind nodeset="/data/deviceid" jr:preload="property" type="string" jr:preloadParams="deviceid"/>
+      <bind nodeset="/data/bday" type="date"/>
+      <bind nodeset="/data/loc" type="geopoint"/>
+      <bind nodeset="/data/hello" readonly="true()" type="string"/>
+      <bind nodeset="/data/calc" type="string" calculate="1 + 2"/>
+      <bind nodeset="/data/ack" type="string"/>
+      <bind nodeset="/data/photo" type="binary"/>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" jr:preload="uid"/>
+    </model>
+  </h:head>
+  <h:body>
+    <input ref="/data/bday">
+      <label>Birth date</label>
+    </input>
+    <input ref="/data/loc">
+      <label>Location</label>
+    </input>
+    <input ref="/data/hello">
+      <label>A note</label>
+    </input>
+    <trigger ref="/data/ack">
+      <label>OK?</label>
+    </trigger>
+    <upload ref="/data/photo" mediatype="image/*">
+      <label>Photo</label>
+    </upload>
+  </h:body>
+</h:html>
