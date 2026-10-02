@@ -31,12 +31,44 @@ pub struct Question {
 
 /// A parsed XLSForm survey: settings plus an ordered list of children.
 ///
-/// In Phase 0 children are a flat list of [`Question`]; groups and repeats
-/// are introduced in Phase 3.
+/// Children are a flat list of [`Question`] for now; groups and repeats are
+/// introduced in Phase 3.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Survey {
     /// Form-level settings.
     pub settings: Settings,
     /// Ordered survey children.
     pub children: Vec<Question>,
+}
+
+/// XForm mapping for a question type: optional body control and bind type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TypeSpec {
+    /// Body control tag (e.g. `input`, `select`, `upload`), or `None` for
+    /// data-only types such as `calculate`.
+    pub control_tag: Option<&'static str>,
+    /// XForm bind data type (e.g. `string`, `int`).
+    pub bind_type: &'static str,
+    /// Whether the bind is read-only.
+    pub readonly: bool,
+}
+
+/// Resolve an XLSForm question type token to its XForm mapping.
+///
+/// Returns `None` for types not yet supported. The table grows as later
+/// phases add question kinds.
+#[must_use]
+pub fn resolve_type(kind: &str) -> Option<TypeSpec> {
+    let spec = |control_tag, bind_type, readonly| TypeSpec {
+        control_tag,
+        bind_type,
+        readonly,
+    };
+    match kind {
+        "text" => Some(spec(Some("input"), "string", false)),
+        "integer" => Some(spec(Some("input"), "int", false)),
+        "decimal" => Some(spec(Some("input"), "decimal", false)),
+        "note" => Some(spec(Some("input"), "string", true)),
+        _ => None,
+    }
 }

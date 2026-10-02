@@ -7,7 +7,7 @@ golden tests (compile a form, compare the XForm after XML canonicalization).
 | Phase | Theme | Status |
 | ----- | ------------------------------------------- | ------ |
 | 0 | Workspace, CI & conformance harness | ✅ done |
-| 1 | Walking skeleton — one form end to end | ⬜ |
+| 1 | Walking skeleton — one form end to end | ✅ done |
 | 2 | Question types & choices | ⬜ |
 | 3 | Groups & repeats | ⬜ |
 | 4 | Expressions & `${ref}` rewriting | ⬜ |
@@ -22,14 +22,14 @@ golden tests (compile a form, compare the XForm after XML canonicalization).
 - [x] Conformance harness: XML canonicalization + unified diff
 - [x] Green build/test/lint
 
-## Phase 1 — Walking skeleton
+## Phase 1 — Walking skeleton ✅
 
-A form with `text`, `integer` and `note` questions compiles end to end.
+A flat form with `text` / `integer` / `note` questions compiles end to end.
 
-- [ ] Markdown table reader
-- [ ] Parse rows into the survey model for the basic types
-- [ ] Emit `<instance>`, `<bind>` and `<body>` controls
-- [ ] **GO:** the simple-form golden test passes
+- [x] Markdown table reader (with unit tests)
+- [x] Parse `survey` + `settings` sheets into the survey model
+- [x] Emit `<instance>`, `<bind>` and `<body>` controls
+- [x] **GO:** the simple-form golden test passes
 
 ## Phase 2 — Question types & choices
 

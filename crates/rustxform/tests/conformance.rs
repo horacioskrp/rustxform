@@ -40,11 +40,10 @@ fn skeleton_is_well_formed_xform() {
     // The stub still emits a well-formed XForm shell the oracle can parse.
     assert!(canonicalize(&xform).is_ok());
     assert!(xform.contains("h:html"));
-    assert!(xform.contains("<model>"));
+    assert!(xform.contains("<model"));
 }
 
 #[test]
-#[ignore = "Phase 1: real conversion + verified golden"]
 fn conformance_simple_text_form() {
     let md = include_str!("fixtures/simple.md");
     let expected = include_str!("fixtures/simple.xml");

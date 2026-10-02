@@ -1,27 +1,27 @@
 <?xml version="1.0"?>
-<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms">
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms" xmlns:odk="http://www.opendatakit.org/xforms">
   <h:head>
     <h:title>Simple</h:title>
-    <model>
+    <model odk:xforms-version="1.0.0">
       <instance>
-        <simple id="simple">
+        <data id="simple">
           <name/>
           <age/>
           <meta>
             <instanceID/>
           </meta>
-        </simple>
+        </data>
       </instance>
-      <bind nodeset="/simple/name" type="string"/>
-      <bind nodeset="/simple/age" type="int"/>
-      <bind jr:preload="uid" nodeset="/simple/meta/instanceID" readonly="true()" type="string"/>
+      <bind nodeset="/data/name" type="string"/>
+      <bind nodeset="/data/age" type="int"/>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" jr:preload="uid"/>
     </model>
   </h:head>
   <h:body>
-    <input ref="/simple/name">
+    <input ref="/data/name">
       <label>Your name</label>
     </input>
-    <input ref="/simple/age">
+    <input ref="/data/age">
       <label>Your age</label>
     </input>
   </h:body>
