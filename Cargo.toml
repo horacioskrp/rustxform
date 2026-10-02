@@ -1,0 +1,35 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+authors = ["KARFI"]
+repository = "https://github.com/horacioskrp/rustxform"
+
+[workspace.dependencies]
+# Internal crates
+rustxform-core = { path = "crates/rustxform-core", version = "0.1.0" }
+rustxform-reader = { path = "crates/rustxform-reader", version = "0.1.0" }
+rustxform-parse = { path = "crates/rustxform-parse", version = "0.1.0" }
+rustxform-expr = { path = "crates/rustxform-expr", version = "0.1.0" }
+rustxform-xform = { path = "crates/rustxform-xform", version = "0.1.0" }
+rustxform-validate = { path = "crates/rustxform-validate", version = "0.1.0" }
+rustxform = { path = "crates/rustxform", version = "0.1.0" }
+
+# External
+thiserror = "2"
+quick-xml = "0.37"
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+similar = "2"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }

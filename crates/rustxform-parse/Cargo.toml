@@ -1,0 +1,17 @@
+[package]
+name = "rustxform-parse"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Normalize a raw workbook into the rustxform survey model."
+
+[dependencies]
+rustxform-core.workspace = true
+rustxform-reader.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

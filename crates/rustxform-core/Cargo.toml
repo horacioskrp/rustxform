@@ -1,0 +1,12 @@
+[package]
+name = "rustxform-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Core data model (Survey, Question, Settings) for rustxform."
+
+[lints]
+workspace = true

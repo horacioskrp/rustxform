@@ -1,0 +1,15 @@
+// Question type -> XForm mapping (control tag + bind data type).
+// Starter subset; the full table is filled in during Phase 1/2.
+// Not loaded by the code yet — reference artifact.
+// Shape: name => (control_tag: Option<&str>, bind_type: &str, readonly: bool)
+{
+    "text":      (control_tag: Some("input"),  bind_type: "string",   readonly: false),
+    "integer":   (control_tag: Some("input"),  bind_type: "int",      readonly: false),
+    "decimal":   (control_tag: Some("input"),  bind_type: "decimal",  readonly: false),
+    "note":      (control_tag: Some("input"),  bind_type: "string",   readonly: true),
+    "date":      (control_tag: Some("input"),  bind_type: "date",     readonly: false),
+    "dateTime":  (control_tag: Some("input"),  bind_type: "dateTime", readonly: false),
+    "geopoint":  (control_tag: Some("input"),  bind_type: "geopoint", readonly: false),
+    "image":     (control_tag: Some("upload"), bind_type: "binary",   readonly: false),
+    "calculate": (control_tag: None,           bind_type: "string",   readonly: false),
+}

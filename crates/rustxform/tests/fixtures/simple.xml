@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms">
+  <h:head>
+    <h:title>Simple</h:title>
+    <model>
+      <instance>
+        <simple id="simple">
+          <name/>
+          <age/>
+          <meta>
+            <instanceID/>
+          </meta>
+        </simple>
+      </instance>
+      <bind nodeset="/simple/name" type="string"/>
+      <bind nodeset="/simple/age" type="int"/>
+      <bind jr:preload="uid" nodeset="/simple/meta/instanceID" readonly="true()" type="string"/>
+    </model>
+  </h:head>
+  <h:body>
+    <input ref="/simple/name">
+      <label>Your name</label>
+    </input>
+    <input ref="/simple/age">
+      <label>Your age</label>
+    </input>
+  </h:body>
+</h:html>
