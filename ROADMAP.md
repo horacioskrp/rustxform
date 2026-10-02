@@ -10,7 +10,7 @@ golden tests (compile a form, compare the XForm after XML canonicalization).
 | 1 | Walking skeleton — one form end to end | ✅ done |
 | 2 | Question types & choices | ✅ done |
 | 3 | Groups & repeats | ✅ done |
-| 4 | Expressions & `${ref}` rewriting | ⬜ |
+| 4 | Expressions & `${ref}` rewriting | ✅ done |
 | 5 | Multilingual labels & advanced columns | ⬜ |
 | 6 | XLSX/XLS/CSV readers & CLI parity | ⬜ |
 | 7 | Validations | ⬜ |
@@ -45,11 +45,12 @@ A flat form with `text` / `integer` / `note` questions compiles end to end.
 - [x] Repeat emits a `jr:template` plus one live instance; full nested paths
 - [x] **GO:** group/repeat golden fixture passes
 
-## Phase 4 — Expressions & references
+## Phase 4 — Expressions & references ✅
 
-- [ ] Expression tokenizer; rewrite `${name}` to absolute XPath
-- [ ] Relative paths and references inside repeats
-- [ ] **GO:** logic/calculation fixtures pass
+- [x] Scan and rewrite `${name}` references (space-padded, like the reference)
+- [x] Absolute paths, and relative paths when a repeat ancestor is shared
+- [x] Applied to `relevant`/`constraint`/`required`/`read_only`/`calculation`
+- [x] **GO:** logic/references golden fixture passes
 
 ## Phase 5 — Multilingual & advanced columns
 

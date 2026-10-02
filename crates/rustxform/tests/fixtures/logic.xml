@@ -1,0 +1,65 @@
+<?xml version="1.0"?>
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms" xmlns:odk="http://www.opendatakit.org/xforms">
+  <h:head>
+    <h:title>Logic</h:title>
+    <model odk:xforms-version="1.0.0">
+      <instance>
+        <data id="logic">
+          <age/>
+          <adult_name/>
+          <double_age/>
+          <people jr:template="">
+            <pname/>
+            <page/>
+            <greeting/>
+          </people>
+          <people>
+            <pname/>
+            <page/>
+            <greeting/>
+          </people>
+          <summary/>
+          <meta>
+            <instanceID/>
+          </meta>
+        </data>
+      </instance>
+      <bind nodeset="/data/age" type="int" constraint=". &gt;= 0" required="true()"/>
+      <bind nodeset="/data/adult_name" type="string" relevant=" /data/age  &gt;= 18"/>
+      <bind nodeset="/data/double_age" type="int" calculate=" /data/age  * 2"/>
+      <bind nodeset="/data/people/pname" type="string"/>
+      <bind nodeset="/data/people/page" type="int"/>
+      <bind nodeset="/data/people/greeting" readonly="true()" type="string" relevant=" ../page  &gt; 0"/>
+      <bind nodeset="/data/summary" readonly="true()" type="string" relevant=" /data/double_age  &gt; 10"/>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" jr:preload="uid"/>
+    </model>
+  </h:head>
+  <h:body>
+    <input ref="/data/age">
+      <label>Age</label>
+    </input>
+    <input ref="/data/adult_name">
+      <label>Adult name</label>
+    </input>
+    <input ref="/data/double_age">
+      <label>Double age</label>
+    </input>
+    <group ref="/data/people">
+      <label>People</label>
+      <repeat nodeset="/data/people">
+        <input ref="/data/people/pname">
+          <label>Person name</label>
+        </input>
+        <input ref="/data/people/page">
+          <label>Person age</label>
+        </input>
+        <input ref="/data/people/greeting">
+          <label>Greeting</label>
+        </input>
+      </repeat>
+    </group>
+    <input ref="/data/summary">
+      <label>Summary</label>
+    </input>
+  </h:body>
+</h:html>

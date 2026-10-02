@@ -80,6 +80,14 @@ pub struct Question {
     pub label: Option<String>,
     /// Expression from the `calculation` column, if any.
     pub calculation: Option<String>,
+    /// Expression from the `relevant` column, if any.
+    pub relevant: Option<String>,
+    /// Expression from the `constraint` column, if any.
+    pub constraint: Option<String>,
+    /// Raw `required` column value (e.g. `yes` or an expression), if any.
+    pub required: Option<String>,
+    /// Raw `read_only` column value, if any.
+    pub readonly: Option<String>,
 }
 
 /// One option within a choice list.

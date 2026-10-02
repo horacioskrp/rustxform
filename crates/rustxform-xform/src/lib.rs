@@ -5,9 +5,12 @@
 //! nest, and repeats emit a `jr:template` plus one live instance. Multi-
 //! language translations arrive later.
 
+use std::collections::HashMap;
+
 use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
 use rustxform_core::{Container, Control, Kind, Node, Question, Survey};
+use rustxform_expr::rewrite_references;
 
 /// Name of the primary instance root element.
 const ROOT: &str = "data";
@@ -52,7 +55,8 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
 
     write_primary_instance(&mut w, survey, form_id)?;
     write_choice_instances(&mut w, survey)?;
-    write_binds(&mut w, &survey.children, &format!("/{ROOT}"))?;
+    let index = build_index(&survey.children);
+    write_binds(&mut w, &survey.children, &format!("/{ROOT}"), &index)?;
     write_instance_id_bind(&mut w)?;
 
     w.write_event(Event::End(BytesEnd::new("model")))?;
@@ -175,12 +179,17 @@ fn collect_lists<'a>(nodes: &'a [Node], seen: &mut Vec<&'a str>) {
 // --- Binds ------------------------------------------------------------------
 
 /// Emit binds for every leaf question under `parent`, depth-first.
-fn write_binds(w: &mut W, nodes: &[Node], parent: &str) -> Result<(), XformError> {
+fn write_binds(
+    w: &mut W,
+    nodes: &[Node],
+    parent: &str,
+    index: &HashMap<String, Vec<Step>>,
+) -> Result<(), XformError> {
     for node in nodes {
         match node {
-            Node::Question(q) => write_bind(w, q, &format!("{parent}/{}", q.name))?,
+            Node::Question(q) => write_bind(w, q, &format!("{parent}/{}", q.name), index)?,
             Node::Group(c) | Node::Repeat(c) => {
-                write_binds(w, &c.children, &format!("{parent}/{}", c.name))?;
+                write_binds(w, &c.children, &format!("{parent}/{}", c.name), index)?;
             }
         }
     }
@@ -188,7 +197,20 @@ fn write_binds(w: &mut W, nodes: &[Node], parent: &str) -> Result<(), XformError
 }
 
 /// Write the `<bind nodeset="..">` for a question.
-fn write_bind(w: &mut W, question: &Question, nodeset: &str) -> Result<(), XformError> {
+fn write_bind(
+    w: &mut W,
+    question: &Question,
+    nodeset: &str,
+    index: &HashMap<String, Vec<Step>>,
+) -> Result<(), XformError> {
+    let empty: Vec<Step> = Vec::new();
+    let context = index.get(&question.name).unwrap_or(&empty);
+    let resolve = |name: &str| {
+        index
+            .get(name)
+            .map(|target| reference_xpath(context, target))
+    };
+
     let mut bind = BytesStart::new("bind");
     bind.push_attribute(("nodeset", nodeset));
 
@@ -200,23 +222,139 @@ fn write_bind(w: &mut W, question: &Question, nodeset: &str) -> Result<(), Xform
                 bind.push_attribute(("jr:preloadParams", p.params));
             } else {
                 bind.push_attribute(("type", b.bind_type));
-                if b.readonly {
-                    bind.push_attribute(("readonly", "true()"));
-                }
-                if let Some(calc) = &question.calculation {
-                    bind.push_attribute(("calculate", calc.as_str()));
-                }
+                push_logic_attributes(&mut bind, question, &resolve, b.readonly);
             }
         }
         Kind::Select { .. } | Kind::Unknown(_) => {
             bind.push_attribute(("type", "string"));
-            if let Some(calc) = &question.calculation {
-                bind.push_attribute(("calculate", calc.as_str()));
-            }
+            push_logic_attributes(&mut bind, question, &resolve, false);
         }
     }
     w.write_event(Event::Empty(bind))?;
     Ok(())
+}
+
+/// Add the `readonly`/`required`/`relevant`/`constraint`/`calculate`
+/// attributes, rewriting `${…}` references via `resolve`.
+fn push_logic_attributes(
+    bind: &mut BytesStart<'_>,
+    q: &Question,
+    resolve: &impl Fn(&str) -> Option<String>,
+    base_readonly: bool,
+) {
+    if let Some(value) = readonly_value(q, base_readonly, resolve) {
+        bind.push_attribute(("readonly", value.as_str()));
+    }
+    if let Some(value) = flag_value(q.required.as_deref(), resolve) {
+        bind.push_attribute(("required", value.as_str()));
+    }
+    if let Some(expr) = &q.relevant {
+        bind.push_attribute(("relevant", rewrite_references(expr, resolve).as_str()));
+    }
+    if let Some(expr) = &q.constraint {
+        bind.push_attribute(("constraint", rewrite_references(expr, resolve).as_str()));
+    }
+    if let Some(expr) = &q.calculation {
+        bind.push_attribute(("calculate", rewrite_references(expr, resolve).as_str()));
+    }
+}
+
+/// Effective `readonly` value: forced by type, or from the `read_only` column.
+fn readonly_value(
+    q: &Question,
+    base_readonly: bool,
+    resolve: &impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    if base_readonly {
+        return Some("true()".to_owned());
+    }
+    flag_value(q.readonly.as_deref(), resolve)
+}
+
+/// Resolve a boolean-ish column: `yes`/`true` → `true()`, `no`/`false` → none,
+/// otherwise a rewritten expression.
+fn flag_value(raw: Option<&str>, resolve: &impl Fn(&str) -> Option<String>) -> Option<String> {
+    let value = raw?;
+    let lowered = value.trim().to_ascii_lowercase();
+    match lowered.as_str() {
+        "yes" | "true" | "true()" => Some("true()".to_owned()),
+        "no" | "false" | "false()" | "" => None,
+        _ => Some(rewrite_references(value, resolve)),
+    }
+}
+
+/// A step on the path from the instance root to a node.
+#[derive(Clone)]
+struct Step {
+    name: String,
+    repeat: bool,
+}
+
+/// Index every question by name to its path of [`Step`]s from the root.
+fn build_index(nodes: &[Node]) -> HashMap<String, Vec<Step>> {
+    let mut index = HashMap::new();
+    let mut prefix: Vec<Step> = Vec::new();
+    index_nodes(nodes, &mut prefix, &mut index);
+    index
+}
+
+fn index_nodes(nodes: &[Node], prefix: &mut Vec<Step>, index: &mut HashMap<String, Vec<Step>>) {
+    for node in nodes {
+        match node {
+            Node::Question(q) => {
+                let mut path = prefix.clone();
+                path.push(Step {
+                    name: q.name.clone(),
+                    repeat: false,
+                });
+                index.insert(q.name.clone(), path);
+            }
+            Node::Group(c) => {
+                prefix.push(Step {
+                    name: c.name.clone(),
+                    repeat: false,
+                });
+                index_nodes(&c.children, prefix, index);
+                prefix.pop();
+            }
+            Node::Repeat(c) => {
+                prefix.push(Step {
+                    name: c.name.clone(),
+                    repeat: true,
+                });
+                index_nodes(&c.children, prefix, index);
+                prefix.pop();
+            }
+        }
+    }
+}
+
+/// XPath from a `context` node to a `target` node: relative when they share a
+/// repeat ancestor, absolute otherwise.
+fn reference_xpath(context: &[Step], target: &[Step]) -> String {
+    let mut common = 0;
+    while common < context.len()
+        && common < target.len()
+        && context[common].name == target[common].name
+    {
+        common += 1;
+    }
+
+    let shares_repeat = target[..common].iter().any(|s| s.repeat);
+    if shares_repeat {
+        let ups = context.len() - common;
+        let mut parts: Vec<&str> = Vec::with_capacity(ups + target.len() - common);
+        parts.extend(std::iter::repeat_n("..", ups));
+        parts.extend(target[common..].iter().map(|s| s.name.as_str()));
+        parts.join("/")
+    } else {
+        let mut path = format!("/{ROOT}");
+        for step in target {
+            path.push('/');
+            path.push_str(&step.name);
+        }
+        path
+    }
 }
 
 /// Write the fixed `instanceID` metadata bind.

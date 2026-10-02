@@ -10,6 +10,7 @@ description = "Emit XForm XML from the rustxform survey model."
 
 [dependencies]
 rustxform-core.workspace = true
+rustxform-expr.workspace = true
 quick-xml.workspace = true
 thiserror.workspace = true
 

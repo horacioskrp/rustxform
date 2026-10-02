@@ -60,3 +60,4 @@ golden!(conformance_simple_text_form, "simple");
 golden!(conformance_choices_form, "choices");
 golden!(conformance_types_and_metadata_form, "types");
 golden!(conformance_groups_and_repeats_form, "groups");
+golden!(conformance_logic_and_references_form, "logic");

@@ -76,6 +76,10 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
     let name_col = column("name");
     let label_col = column("label");
     let calc_col = column("calculation");
+    let relevant_col = column("relevant");
+    let constraint_col = column("constraint");
+    let required_col = column("required");
+    let readonly_col = column("read_only").or_else(|| column("readonly"));
 
     let mut root: Vec<Node> = Vec::new();
     let mut stack: Vec<Frame> = Vec::new();
@@ -111,6 +115,10 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
                     name: cell(name_col).to_owned(),
                     label: optional(cell(label_col)),
                     calculation: optional(cell(calc_col)),
+                    relevant: optional(cell(relevant_col)),
+                    constraint: optional(cell(constraint_col)),
+                    required: optional(cell(required_col)),
+                    readonly: optional(cell(readonly_col)),
                 };
                 place(&mut root, &mut stack, Node::Question(question));
             }
