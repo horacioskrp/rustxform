@@ -955,10 +955,9 @@ fn write_range(
     if let Some(appearance) = &question.appearance {
         element.push_attribute(("appearance", appearance.as_str()));
     }
-    for key in ["start", "end", "step"] {
-        if let Some(value) = question.parameter(key) {
-            element.push_attribute((key, value));
-        }
+    // Defaults match the reference compiler when parameters are omitted.
+    for (key, default) in [("start", "1"), ("end", "10"), ("step", "1")] {
+        element.push_attribute((key, question.parameter(key).unwrap_or(default)));
     }
     w.write_event(Event::Start(element))?;
     write_label(w, question, reference, ml, index)?;

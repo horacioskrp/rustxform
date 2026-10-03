@@ -81,6 +81,9 @@ golden!(conformance_xml_external_form, "xmlexternal");
 golden!(conformance_osm_form, "osm");
 golden!(conformance_entity_create_if_form, "eci");
 golden!(conformance_entity_update_if_form, "eui");
+golden!(conformance_range_default_form, "rangedefault");
+golden!(conformance_file_form, "file");
+golden!(conformance_phone_number_form, "phonenumber");
 
 #[test]
 fn xlsx_reader_matches_markdown_golden() {

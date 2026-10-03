@@ -355,6 +355,14 @@ pub fn resolve_builtin(kind: &str) -> Option<Builtin> {
             false,
             None,
         ),
+        "file" => b(
+            Some(Control::Upload {
+                mediatype: "application/*",
+            }),
+            "binary",
+            false,
+            None,
+        ),
         "calculate" => b(None, "string", false, None),
         "start" => b(None, "dateTime", false, preload("timestamp", "start")),
         "end" => b(None, "dateTime", false, preload("timestamp", "end")),

@@ -312,7 +312,7 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
                 }
             }
             _ => {
-                let question = Question {
+                let mut question = Question {
                     kind: parse_kind(type_token),
                     name: cell(name_col).to_owned(),
                     label: localized(&label_cols, row),
@@ -331,6 +331,14 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
                     choice_filter: optional(cell(filter_col)),
                     save_to: optional(cell(saveto_col)),
                 };
+                if type_token.trim() == "phone number" {
+                    if question.constraint.is_none() {
+                        question.constraint = Some("regex(., '^\\d*$')".to_owned());
+                    }
+                    if question.hint.is_empty() {
+                        question.hint.default = Some("Enter numbers only.".to_owned());
+                    }
+                }
                 place(&mut root, &mut stack, Node::Question(question));
             }
         }
@@ -360,6 +368,10 @@ fn parse_kind(token: &str) -> Kind {
     let mut parts = token.split_whitespace();
     let head = parts.next().unwrap_or_default();
 
+    if token.trim() == "phone number" {
+        return resolve_builtin("text")
+            .map_or_else(|| Kind::Unknown(token.to_owned()), Kind::Builtin);
+    }
     let inline = |select, list: &str| Kind::Select {
         select,
         list: list.to_owned(),

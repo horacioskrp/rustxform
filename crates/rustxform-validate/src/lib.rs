@@ -244,8 +244,13 @@ fn check_question(
 /// Return a reason when a range question's parameters are invalid.
 fn range_problem(q: &Question) -> Option<String> {
     let number = |key| q.parameter(key).and_then(|v| v.parse::<f64>().ok());
-    let (Some(start), Some(end)) = (number("start"), number("end")) else {
-        return Some("missing or non-numeric `start`/`end`".to_owned());
+    let (start, end) = match (number("start"), number("end")) {
+        // No bounds given: the defaults (1..10) are used.
+        (None, None) if q.parameter("start").is_none() && q.parameter("end").is_none() => {
+            return None;
+        }
+        (Some(start), Some(end)) => (start, end),
+        _ => return Some("missing or non-numeric `start`/`end`".to_owned()),
     };
     if start >= end {
         return Some(format!("`start` ({start}) must be less than `end` ({end})"));
