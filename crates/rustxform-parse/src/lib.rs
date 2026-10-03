@@ -35,12 +35,30 @@ pub fn workbook_to_survey(workbook: &Workbook) -> Result<Survey, ParseError> {
         survey.children = parse_nodes(sheet);
         survey.audit = extract_audit(&mut survey.children);
     }
+    if let Some(sheet) = workbook.sheet("osm") {
+        survey.osm_tags = parse_choices(sheet);
+    }
     if let Some(sheet) = workbook.sheet("entities") {
         survey.entity = parse_entity(sheet);
     }
+    survey.external_instances = extract_external(&mut survey.children);
     survey.languages = collect_languages(workbook.sheet("survey"), workbook.sheet("choices"));
 
     Ok(survey)
+}
+
+/// Remove top-level `xml-external` questions, returning their names (each
+/// becomes an external secondary instance).
+fn extract_external(children: &mut Vec<Node>) -> Vec<String> {
+    let mut names = Vec::new();
+    children.retain(|node| match node {
+        Node::Question(q) if matches!(&q.kind, Kind::Unknown(t) if t == "xml-external") => {
+            names.push(q.name.clone());
+            false
+        }
+        _ => true,
+    });
+    names
 }
 
 /// Remove a top-level `audit` metadata question, returning whether one was
@@ -349,6 +367,9 @@ fn parse_kind(token: &str) -> Kind {
         "select_one" => inline(SelectType::One, parts.next().unwrap_or_default()),
         "select_multiple" => inline(SelectType::Multiple, parts.next().unwrap_or_default()),
         "rank" => inline(SelectType::Rank, parts.next().unwrap_or_default()),
+        "osm" => Kind::Osm {
+            tagset: parts.next().unwrap_or_default().to_owned(),
+        },
         "select_one_from_file" => {
             select_from_file(SelectType::One, parts.next().unwrap_or_default())
         }

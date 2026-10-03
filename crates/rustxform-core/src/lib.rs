@@ -77,6 +77,11 @@ pub enum Kind {
         /// External source filename for `select_*_from_file`; `None` inline.
         file: Option<String>,
     },
+    /// An `osm <tagset>` capture: an `osm/*` upload with tag children.
+    Osm {
+        /// Name of the tag list (from the `osm` sheet).
+        tagset: String,
+    },
     /// A type token not yet supported; emitted as a plain string bind.
     Unknown(String),
 }
@@ -278,6 +283,10 @@ pub struct Survey {
     pub entity: Option<Entity>,
     /// Whether an `audit` metadata question is present.
     pub audit: bool,
+    /// `xml-external` instance ids (each loads `jr://file/<id>.xml`).
+    pub external_instances: Vec<String>,
+    /// OSM tag lists from the `osm` sheet.
+    pub osm_tags: Vec<ChoiceList>,
 }
 
 impl Survey {

@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
 use rustxform_core::{
-    Container, Control, Kind, Localized, Media, Node, Question, SelectType, Survey,
+    ChoiceList, Container, Control, Kind, Localized, Media, Node, Question, SelectType, Survey,
 };
 use rustxform_expr::rewrite_references;
 
@@ -81,6 +81,12 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
         instance.push_attribute(("src", "jr://instance/last-saved"));
         w.write_event(Event::Empty(instance))?;
     }
+    for name in &survey.external_instances {
+        let mut instance = BytesStart::new("instance");
+        instance.push_attribute(("id", name.as_str()));
+        instance.push_attribute(("src", format!("jr://file/{name}.xml").as_str()));
+        w.write_event(Event::Empty(instance))?;
+    }
     let index = build_index(&survey.children);
     write_binds(
         &mut w,
@@ -108,6 +114,7 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
         &format!("/{ROOT}"),
         multilingual,
         &index,
+        &survey.osm_tags,
     )?;
     close(&mut w, "h:body")?;
 
@@ -521,6 +528,10 @@ fn write_bind(
             bind.push_attribute(("type", bind_type));
             push_logic_attributes(&mut bind, question, &resolve, false, nodeset, ml);
         }
+        Kind::Osm { .. } => {
+            bind.push_attribute(("type", "binary"));
+            push_logic_attributes(&mut bind, question, &resolve, false, nodeset, ml);
+        }
         Kind::Unknown(_) => {
             bind.push_attribute(("type", "string"));
             push_logic_attributes(&mut bind, question, &resolve, false, nodeset, ml);
@@ -779,15 +790,18 @@ fn write_body(
     parent: &str,
     ml: bool,
     index: &HashMap<String, Vec<Step>>,
+    osm: &[ChoiceList],
 ) -> Result<(), XformError> {
     for node in nodes {
         match node {
-            Node::Question(q) => write_control(w, q, &format!("{parent}/{}", q.name), ml, index)?,
+            Node::Question(q) => {
+                write_control(w, q, &format!("{parent}/{}", q.name), ml, index, osm)?;
+            }
             Node::Group(g) => {
-                write_group(w, g, &format!("{parent}/{}", g.name), false, ml, index)?;
+                write_group(w, g, &format!("{parent}/{}", g.name), false, ml, index, osm)?;
             }
             Node::Repeat(r) => {
-                write_group(w, r, &format!("{parent}/{}", r.name), true, ml, index)?;
+                write_group(w, r, &format!("{parent}/{}", r.name), true, ml, index, osm)?;
             }
         }
     }
@@ -802,6 +816,7 @@ fn write_group(
     repeat: bool,
     ml: bool,
     index: &HashMap<String, Vec<Step>>,
+    osm: &[ChoiceList],
 ) -> Result<(), XformError> {
     let mut group = BytesStart::new("group");
     group.push_attribute(("ref", path));
@@ -820,10 +835,10 @@ fn write_group(
             r.push_attribute(("jr:count", format!(" {path}_count ").as_str()));
         }
         w.write_event(Event::Start(r))?;
-        write_body(w, &c.children, path, ml, index)?;
+        write_body(w, &c.children, path, ml, index, osm)?;
         close(w, "repeat")?;
     } else {
-        write_body(w, &c.children, path, ml, index)?;
+        write_body(w, &c.children, path, ml, index, osm)?;
     }
 
     close(w, "group")?;
@@ -837,6 +852,7 @@ fn write_control(
     reference: &str,
     ml: bool,
     index: &HashMap<String, Vec<Step>>,
+    osm: &[ChoiceList],
 ) -> Result<(), XformError> {
     match &question.kind {
         Kind::Builtin(b) => match b.control {
@@ -855,8 +871,44 @@ fn write_control(
             Some(Control::Range) => write_range(w, reference, question, ml, index),
         },
         Kind::Select { .. } => write_select(w, reference, question, ml, index),
+        Kind::Osm { tagset } => write_osm(w, reference, question, ml, index, tagset, osm),
         Kind::Unknown(_) => Ok(()),
     }
+}
+
+/// Write an `<upload mediatype="osm/*">` with `<tag>` children from the osm set.
+fn write_osm(
+    w: &mut W,
+    reference: &str,
+    question: &Question,
+    ml: bool,
+    index: &HashMap<String, Vec<Step>>,
+    tagset: &str,
+    osm: &[ChoiceList],
+) -> Result<(), XformError> {
+    let mut element = BytesStart::new("upload");
+    element.push_attribute(("ref", reference));
+    if let Some(appearance) = &question.appearance {
+        element.push_attribute(("appearance", appearance.as_str()));
+    }
+    element.push_attribute(("mediatype", "osm/*"));
+    w.write_event(Event::Start(element))?;
+    write_label(w, question, reference, ml, index)?;
+    write_hint(w, question, reference, ml)?;
+
+    if let Some(tags) = osm.iter().find(|t| t.name == tagset) {
+        for tag in &tags.items {
+            let mut element = BytesStart::new("tag");
+            element.push_attribute(("key", tag.name.as_str()));
+            w.write_event(Event::Start(element))?;
+            if let Some(label) = tag.label.single() {
+                text_element(w, "label", label)?;
+            }
+            close(w, "tag")?;
+        }
+    }
+    close(w, "upload")?;
+    Ok(())
 }
 
 /// Write `<tag ref=".." [appearance] extra..>[label][hint]</tag>`.
