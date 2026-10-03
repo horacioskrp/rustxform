@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms" xmlns:odk="http://www.opendatakit.org/xforms">
+  <h:head>
+    <h:title>Defaults</h:title>
+    <model odk:xforms-version="1.0.0">
+      <instance>
+        <data id="defaults">
+          <age>18</age>
+          <loc>1.5 2.5 0 0</loc>
+          <meta>
+            <instanceID/>
+          </meta>
+        </data>
+      </instance>
+      <bind nodeset="/data/age" type="int"/>
+      <bind nodeset="/data/loc" type="geopoint"/>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" jr:preload="uid"/>
+    </model>
+  </h:head>
+  <h:body>
+    <input ref="/data/age">
+      <label>Age</label>
+    </input>
+    <input ref="/data/loc">
+      <label>Location</label>
+    </input>
+  </h:body>
+</h:html>

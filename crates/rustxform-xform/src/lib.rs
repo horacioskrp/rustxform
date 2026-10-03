@@ -263,7 +263,10 @@ fn write_primary_instance(w: &mut W, survey: &Survey, form_id: &str) -> Result<(
 /// Emit a node into the primary instance.
 fn write_instance_node(w: &mut W, node: &Node) -> Result<(), XformError> {
     match node {
-        Node::Question(q) => w.write_event(Event::Empty(BytesStart::new(q.name.as_str())))?,
+        Node::Question(q) => match &q.default {
+            Some(value) => text_element(w, &q.name, value)?,
+            None => w.write_event(Event::Empty(BytesStart::new(q.name.as_str())))?,
+        },
         Node::Group(g) => write_instance_container(w, g, false)?,
         Node::Repeat(r) => {
             // A repeat emits its template plus one live instance.

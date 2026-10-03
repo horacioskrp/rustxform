@@ -1,16 +1,18 @@
-//! Structural validations over a parsed [`Survey`].
+//! Structural validations and non-fatal warnings over a parsed form.
 //!
-//! Checks run before (or instead of) emission and report every problem found,
-//! rather than stopping at the first. Phase 7 covers duplicate and empty node
-//! names, broken `${…}` references, and selects pointing at an unknown choice
-//! list.
+//! [`validate`] returns blocking [`ValidationError`]s (duplicate/empty names,
+//! broken `${…}` references, unknown choice lists, malformed `range`
+//! parameters and geo defaults). [`warnings`] returns non-fatal [`Warning`]s
+//! (missing settings, unrecognized survey columns), which need the raw
+//! workbook headers.
 
 use std::collections::HashSet;
 
-use rustxform_core::{Kind, Node, Question, Survey};
+use rustxform_core::{Control, Kind, Node, Question, Survey};
 use rustxform_expr::reference_names;
+use rustxform_reader::Workbook;
 
-/// A single validation problem found in a survey.
+/// A blocking validation problem.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ValidationError {
     /// A node name is used more than once.
@@ -35,9 +37,36 @@ pub enum ValidationError {
         /// The missing choice list name.
         list: String,
     },
+    /// A `range` question has invalid `parameters`.
+    #[error("`{question}` has invalid range parameters: {reason}")]
+    InvalidRange {
+        /// Name of the range question.
+        question: String,
+        /// Why the parameters are invalid.
+        reason: String,
+    },
+    /// A geo question has a malformed `default` value.
+    #[error("`{question}` has a malformed geo default `{value}`")]
+    InvalidGeoDefault {
+        /// Name of the geo question.
+        question: String,
+        /// The offending default value.
+        value: String,
+    },
 }
 
-/// Validate a [`Survey`], returning all problems found (empty when valid).
+/// A non-fatal warning.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum Warning {
+    /// A recommended setting is absent (a default is used).
+    #[error("the `{0}` setting is missing; a default is used")]
+    MissingSetting(String),
+    /// A survey column header is not recognized (possibly a typo).
+    #[error("unrecognized survey column `{0}`")]
+    UnknownColumn(String),
+}
+
+/// Validate a [`Survey`], returning all blocking problems (empty when valid).
 #[must_use]
 pub fn validate(survey: &Survey) -> Vec<ValidationError> {
     let mut errors = Vec::new();
@@ -49,6 +78,29 @@ pub fn validate(survey: &Survey) -> Vec<ValidationError> {
     check_nodes(&survey.children, &names, &lists, &mut errors);
 
     errors
+}
+
+/// Collect non-fatal warnings; needs the raw workbook for header checks.
+#[must_use]
+pub fn warnings(workbook: &Workbook, survey: &Survey) -> Vec<Warning> {
+    let mut warnings = Vec::new();
+
+    if survey.settings.title.is_none() {
+        warnings.push(Warning::MissingSetting("form_title".to_owned()));
+    }
+    if survey.settings.form_id.is_none() {
+        warnings.push(Warning::MissingSetting("form_id".to_owned()));
+    }
+
+    if let Some(header) = workbook.sheet("survey").and_then(|s| s.rows.first()) {
+        for column in header {
+            if !column.is_empty() && !is_known_survey_column(column) {
+                warnings.push(Warning::UnknownColumn(column.clone()));
+            }
+        }
+    }
+
+    warnings
 }
 
 /// Gather node names, reporting empty and duplicate names as it goes.
@@ -72,7 +124,7 @@ fn collect_names(nodes: &[Node], names: &mut HashSet<String>, errors: &mut Vec<V
     }
 }
 
-/// Check selects and expression references against the known names and lists.
+/// Check selects, references, ranges and geo defaults against known names.
 fn check_nodes(
     nodes: &[Node],
     names: &HashSet<String>,
@@ -93,25 +145,45 @@ fn check_question(
     lists: &HashSet<&str>,
     errors: &mut Vec<ValidationError>,
 ) {
-    if let Kind::Select { list, .. } = &q.kind {
-        if !lists.contains(list.as_str()) {
+    match &q.kind {
+        Kind::Select { list, .. } if !lists.contains(list.as_str()) => {
             errors.push(ValidationError::UnknownChoiceList {
                 question: q.name.clone(),
                 list: list.clone(),
             });
         }
+        Kind::Builtin(b) if b.control == Some(Control::Range) => {
+            if let Some(reason) = range_problem(q) {
+                errors.push(ValidationError::InvalidRange {
+                    question: q.name.clone(),
+                    reason,
+                });
+            }
+        }
+        Kind::Builtin(b) if is_geo(b.bind_type) => {
+            if let Some(value) = &q.default {
+                if !is_valid_geo(value) {
+                    errors.push(ValidationError::InvalidGeoDefault {
+                        question: q.name.clone(),
+                        value: value.clone(),
+                    });
+                }
+            }
+        }
+        _ => {}
     }
 
-    let expressions = [
+    for expr in [
         &q.relevant,
         &q.constraint,
         &q.required,
         &q.readonly,
         &q.calculation,
-    ];
-    for expr in expressions.into_iter().flatten() {
+    ]
+    .into_iter()
+    .flatten()
+    {
         for reference in reference_names(expr) {
-            // `#`-qualified references (e.g. `last-saved#x`) are not plain nodes.
             if !reference.contains('#') && !names.contains(&reference) {
                 errors.push(ValidationError::UnknownReference {
                     owner: q.name.clone(),
@@ -122,14 +194,84 @@ fn check_question(
     }
 }
 
+/// Return a reason when a range question's parameters are invalid.
+fn range_problem(q: &Question) -> Option<String> {
+    let number = |key| q.parameter(key).and_then(|v| v.parse::<f64>().ok());
+    let (Some(start), Some(end)) = (number("start"), number("end")) else {
+        return Some("missing or non-numeric `start`/`end`".to_owned());
+    };
+    if start >= end {
+        return Some(format!("`start` ({start}) must be less than `end` ({end})"));
+    }
+    if let Some(step) = q.parameter("step") {
+        match step.parse::<f64>() {
+            Ok(step) if step > 0.0 => {}
+            _ => return Some("`step` must be a positive number".to_owned()),
+        }
+    }
+    None
+}
+
+/// Whether a bind type is one of the geo shapes.
+fn is_geo(bind_type: &str) -> bool {
+    matches!(bind_type, "geopoint" | "geotrace" | "geoshape")
+}
+
+/// A geo default is `;`-separated points, each `lat lon altitude accuracy`.
+fn is_valid_geo(value: &str) -> bool {
+    value
+        .split(';')
+        .filter(|p| !p.trim().is_empty())
+        .all(|point| {
+            let coords: Vec<&str> = point.split_whitespace().collect();
+            coords.len() == 4 && coords.iter().all(|c| c.parse::<f64>().is_ok())
+        })
+}
+
+/// Whether a survey column header (sans `::` qualifier) is recognized.
+fn is_known_survey_column(column: &str) -> bool {
+    let base = column.split("::").next().unwrap_or(column).trim();
+    matches!(
+        base,
+        "type"
+            | "name"
+            | "label"
+            | "hint"
+            | "media"
+            | "image"
+            | "audio"
+            | "video"
+            | "appearance"
+            | "relevant"
+            | "constraint"
+            | "constraint_message"
+            | "required"
+            | "required_message"
+            | "read_only"
+            | "readonly"
+            | "calculation"
+            | "parameters"
+            | "default"
+            | "choice_filter"
+            | "repeat_count"
+            | "trigger"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use rustxform_parse::workbook_to_survey;
     use rustxform_reader::read_markdown;
 
+    fn parse(md: &str) -> (Workbook, Survey) {
+        let wb = read_markdown(md).unwrap();
+        let survey = workbook_to_survey(&wb).unwrap();
+        (wb, survey)
+    }
+
     fn survey(md: &str) -> Survey {
-        workbook_to_survey(&read_markdown(md).unwrap()).unwrap()
+        parse(md).1
     }
 
     #[test]
@@ -182,5 +324,46 @@ mod tests {
                 list: "missing".to_owned(),
             })
         );
+    }
+
+    #[test]
+    fn flags_invalid_range() {
+        let md = "\
+| survey |       |      |            |
+|        | type  | name | parameters |
+|        | range | r    | start=5 end=1 |
+";
+        let errors = validate(&survey(md));
+        assert!(errors.iter().any(
+            |e| matches!(e, ValidationError::InvalidRange { question, .. } if question == "r")
+        ));
+    }
+
+    #[test]
+    fn flags_malformed_geo_default() {
+        let md = "\
+| survey |          |      |         |
+|        | type     | name | default |
+|        | geopoint | loc  | 1 2     |
+";
+        assert!(
+            validate(&survey(md)).contains(&ValidationError::InvalidGeoDefault {
+                question: "loc".to_owned(),
+                value: "1 2".to_owned(),
+            })
+        );
+    }
+
+    #[test]
+    fn warns_on_missing_settings_and_unknown_columns() {
+        let md = "\
+| survey |      |      |          |
+|        | type | name | relevnt  |
+|        | text | q    |          |
+";
+        let (wb, survey) = parse(md);
+        let warnings = warnings(&wb, &survey);
+        assert!(warnings.contains(&Warning::UnknownColumn("relevnt".to_owned())));
+        assert!(warnings.contains(&Warning::MissingSetting("form_id".to_owned())));
     }
 }

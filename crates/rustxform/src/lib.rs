@@ -16,7 +16,7 @@ use rustxform_reader::{ReadError, Workbook};
 use rustxform_xform::XformError;
 
 #[doc(inline)]
-pub use rustxform_validate::ValidationError;
+pub use rustxform_validate::{ValidationError, Warning};
 
 /// An error from the end-to-end conversion, one per pipeline stage.
 #[derive(Debug, thiserror::Error)]
@@ -76,40 +76,78 @@ pub enum BuildError {
     Invalid(Vec<ValidationError>),
 }
 
-/// Validate then convert a Markdown XLSForm.
+/// A successful validated build: the XForm plus any non-fatal warnings.
+#[derive(Debug, Clone)]
+pub struct Built {
+    /// The generated XForm XML.
+    pub xform: String,
+    /// Non-fatal warnings (missing settings, unknown columns, …).
+    pub warnings: Vec<Warning>,
+}
+
+/// Validate then build a Markdown XLSForm, returning the XForm and warnings.
 ///
 /// # Errors
 ///
 /// Returns [`BuildError::Invalid`] with every problem when the form is
 /// invalid, or [`BuildError::Convert`] if a pipeline stage fails.
-pub fn convert_markdown_checked(src: &str) -> Result<String, BuildError> {
+pub fn build_markdown(src: &str) -> Result<Built, BuildError> {
     build_checked(rustxform_reader::read_markdown(src).map_err(ConvertError::from)?)
 }
 
-/// Validate then convert a CSV XLSForm.
+/// Validate then build a CSV XLSForm. See [`build_markdown`].
 ///
 /// # Errors
 ///
-/// See [`convert_markdown_checked`].
-pub fn convert_csv_checked(src: &str) -> Result<String, BuildError> {
+/// See [`build_markdown`].
+pub fn build_csv(src: &str) -> Result<Built, BuildError> {
     build_checked(rustxform_reader::read_csv(src).map_err(ConvertError::from)?)
 }
 
-/// Validate then convert an XLSX/XLS XLSForm.
+/// Validate then build an XLSX/XLS XLSForm. See [`build_markdown`].
 ///
 /// # Errors
 ///
-/// See [`convert_markdown_checked`].
-pub fn convert_xlsx_checked(bytes: &[u8]) -> Result<String, BuildError> {
+/// See [`build_markdown`].
+pub fn build_xlsx(bytes: &[u8]) -> Result<Built, BuildError> {
     build_checked(rustxform_reader::read_xlsx(bytes).map_err(ConvertError::from)?)
 }
 
-/// Parse, validate, then emit; returning all validation errors if any.
-fn build_checked(workbook: Workbook) -> Result<String, BuildError> {
+/// Validate then convert a Markdown XLSForm, discarding warnings.
+///
+/// # Errors
+///
+/// See [`build_markdown`].
+pub fn convert_markdown_checked(src: &str) -> Result<String, BuildError> {
+    build_markdown(src).map(|b| b.xform)
+}
+
+/// Validate then convert a CSV XLSForm, discarding warnings.
+///
+/// # Errors
+///
+/// See [`build_markdown`].
+pub fn convert_csv_checked(src: &str) -> Result<String, BuildError> {
+    build_csv(src).map(|b| b.xform)
+}
+
+/// Validate then convert an XLSX/XLS XLSForm, discarding warnings.
+///
+/// # Errors
+///
+/// See [`build_markdown`].
+pub fn convert_xlsx_checked(bytes: &[u8]) -> Result<String, BuildError> {
+    build_xlsx(bytes).map(|b| b.xform)
+}
+
+/// Parse, validate, collect warnings, then emit.
+fn build_checked(workbook: Workbook) -> Result<Built, BuildError> {
     let survey = rustxform_parse::workbook_to_survey(&workbook).map_err(ConvertError::from)?;
     let errors = rustxform_validate::validate(&survey);
     if !errors.is_empty() {
         return Err(BuildError::Invalid(errors));
     }
-    Ok(rustxform_xform::survey_to_xform(&survey).map_err(ConvertError::from)?)
+    let warnings = rustxform_validate::warnings(&workbook, &survey);
+    let xform = rustxform_xform::survey_to_xform(&survey).map_err(ConvertError::from)?;
+    Ok(Built { xform, warnings })
 }

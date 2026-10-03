@@ -152,6 +152,7 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
     let cmsg_col = column("constraint_message");
     let rmsg_col = column("required_message");
     let params_col = column("parameters");
+    let default_col = column("default");
     let label_cols = loc_columns(header, "label");
     let hint_cols = loc_columns(header, "hint");
     let media_cols = loc_columns(header, "media");
@@ -207,6 +208,7 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
                             (!file.is_empty()).then(|| (form.clone(), file.to_owned()))
                         })
                         .collect(),
+                    default: optional(cell(default_col)),
                 };
                 place(&mut root, &mut stack, Node::Question(question));
             }

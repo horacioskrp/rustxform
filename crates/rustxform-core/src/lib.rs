@@ -144,6 +144,8 @@ pub struct Question {
     pub parameters: Vec<(String, String)>,
     /// Label media, as `(form, file)` pairs (e.g. `("image", "logo.png")`).
     pub media: Vec<(String, String)>,
+    /// Default value (`default` column), placed in the primary instance.
+    pub default: Option<String>,
 }
 
 impl Question {
