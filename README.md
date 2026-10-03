@@ -61,8 +61,9 @@ let xform = rustxform::convert_markdown(markdown_source)?;
 | `rustxform-expr`     | Tokenize expressions, rewrite `${ref}` into XPath     |
 | `rustxform-xform`    | Emit XForm XML                                         |
 | `rustxform-validate` | Form validations                                      |
+| `rustxform-xform2json` | Reverse: parse an XForm back into the survey model  |
 | `rustxform`          | End-to-end facade (`convert_markdown`) + tests        |
-| `rustxform-cli`      | Command-line interface                                 |
+| `rustxform-cli`      | Command-line interface (`--json`, `--odk-validate`)   |
 
 ## Build & test
 

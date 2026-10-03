@@ -92,5 +92,10 @@ Also done: `select_*_from_file`, `last-saved#`, multilingual
 multilingual `media::`, and language-tag warnings (ISO 639-1 list + 3-letter
 shape; unlimited languages per form).
 
+Also done (v2): **Entities** (create-entity forms), **xform2json** (reverse
+parser, flat subset), **ODK Validate** integration (`--odk-validate <jar>`).
+
 Intentionally out of scope: `choices` header-coherence warnings (would flag
-legitimate cascade columns). Possible next: published crate.
+legitimate cascade columns), entity update/`create_if`/`update_if`, and
+reconstructing groups/itext/choices in xform2json. Possible next: published
+crate.
