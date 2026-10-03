@@ -415,6 +415,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustxform-xform2json"
+version = "0.1.0"
+dependencies = [
+ "quick-xml 0.37.5",
+ "rustxform-core",
+ "thiserror",
+]
+
+[[package]]
 name = "ryu"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
