@@ -149,6 +149,9 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
     let constraint_col = column("constraint");
     let required_col = column("required");
     let readonly_col = column("read_only").or_else(|| column("readonly"));
+    let cmsg_col = column("constraint_message");
+    let rmsg_col = column("required_message");
+    let params_col = column("parameters");
     let label_cols = loc_columns(header, "label");
     let hint_cols = loc_columns(header, "hint");
 
@@ -192,6 +195,9 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
                     constraint: optional(cell(constraint_col)),
                     required: optional(cell(required_col)),
                     readonly: optional(cell(readonly_col)),
+                    constraint_message: optional(cell(cmsg_col)),
+                    required_message: optional(cell(rmsg_col)),
+                    parameters: parse_parameters(cell(params_col)),
                 };
                 place(&mut root, &mut stack, Node::Question(question));
             }
@@ -273,4 +279,14 @@ fn parse_choices(sheet: &Sheet) -> Vec<ChoiceList> {
 /// Map an empty cell to `None`, otherwise `Some(owned)`.
 fn optional(value: &str) -> Option<String> {
     (!value.is_empty()).then(|| value.to_owned())
+}
+
+/// Parse a `parameters` cell (`key=value key=value`) into pairs.
+fn parse_parameters(raw: &str) -> Vec<(String, String)> {
+    raw.split_whitespace()
+        .filter_map(|pair| {
+            pair.split_once('=')
+                .map(|(k, v)| (k.trim().to_owned(), v.trim().to_owned()))
+        })
+        .collect()
 }

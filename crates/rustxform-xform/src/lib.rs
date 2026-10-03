@@ -67,7 +67,13 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
     close(&mut w, "h:head")?;
 
     open(&mut w, "h:body")?;
-    write_body(&mut w, &survey.children, &format!("/{ROOT}"), multilingual)?;
+    write_body(
+        &mut w,
+        &survey.children,
+        &format!("/{ROOT}"),
+        multilingual,
+        &index,
+    )?;
     close(&mut w, "h:body")?;
 
     close(&mut w, "h:html")?;
@@ -347,11 +353,17 @@ fn push_logic_attributes(
     if let Some(value) = flag_value(q.required.as_deref(), resolve) {
         bind.push_attribute(("required", value.as_str()));
     }
+    if let Some(msg) = &q.required_message {
+        bind.push_attribute(("jr:requiredMsg", msg.as_str()));
+    }
     if let Some(expr) = &q.relevant {
         bind.push_attribute(("relevant", rewrite_references(expr, resolve).as_str()));
     }
     if let Some(expr) = &q.constraint {
         bind.push_attribute(("constraint", rewrite_references(expr, resolve).as_str()));
+    }
+    if let Some(msg) = &q.constraint_message {
+        bind.push_attribute(("jr:constraintMsg", msg.as_str()));
     }
     if let Some(expr) = &q.calculation {
         bind.push_attribute(("calculate", rewrite_references(expr, resolve).as_str()));
@@ -470,12 +482,22 @@ fn reference_xpath(context: &[Step], target: &[Step]) -> String {
 // --- Body -------------------------------------------------------------------
 
 /// Emit body controls for `nodes` under `parent`.
-fn write_body(w: &mut W, nodes: &[Node], parent: &str, ml: bool) -> Result<(), XformError> {
+fn write_body(
+    w: &mut W,
+    nodes: &[Node],
+    parent: &str,
+    ml: bool,
+    index: &HashMap<String, Vec<Step>>,
+) -> Result<(), XformError> {
     for node in nodes {
         match node {
-            Node::Question(q) => write_control(w, q, &format!("{parent}/{}", q.name), ml)?,
-            Node::Group(g) => write_group(w, g, &format!("{parent}/{}", g.name), false, ml)?,
-            Node::Repeat(r) => write_group(w, r, &format!("{parent}/{}", r.name), true, ml)?,
+            Node::Question(q) => write_control(w, q, &format!("{parent}/{}", q.name), ml, index)?,
+            Node::Group(g) => {
+                write_group(w, g, &format!("{parent}/{}", g.name), false, ml, index)?;
+            }
+            Node::Repeat(r) => {
+                write_group(w, r, &format!("{parent}/{}", r.name), true, ml, index)?;
+            }
         }
     }
     Ok(())
@@ -488,6 +510,7 @@ fn write_group(
     path: &str,
     repeat: bool,
     ml: bool,
+    index: &HashMap<String, Vec<Step>>,
 ) -> Result<(), XformError> {
     let mut group = BytesStart::new("group");
     group.push_attribute(("ref", path));
@@ -500,10 +523,10 @@ fn write_group(
         let mut r = BytesStart::new("repeat");
         r.push_attribute(("nodeset", path));
         w.write_event(Event::Start(r))?;
-        write_body(w, &c.children, path, ml)?;
+        write_body(w, &c.children, path, ml, index)?;
         close(w, "repeat")?;
     } else {
-        write_body(w, &c.children, path, ml)?;
+        write_body(w, &c.children, path, ml, index)?;
     }
 
     close(w, "group")?;
@@ -516,23 +539,26 @@ fn write_control(
     question: &Question,
     reference: &str,
     ml: bool,
+    index: &HashMap<String, Vec<Step>>,
 ) -> Result<(), XformError> {
     match &question.kind {
         Kind::Builtin(b) => match b.control {
             None => Ok(()),
-            Some(Control::Input) => control(w, "input", reference, question, ml, &[]),
-            Some(Control::Trigger) => control(w, "trigger", reference, question, ml, &[]),
+            Some(Control::Input) => control(w, "input", reference, question, ml, index, &[]),
+            Some(Control::Trigger) => control(w, "trigger", reference, question, ml, index, &[]),
             Some(Control::Upload { mediatype }) => control(
                 w,
                 "upload",
                 reference,
                 question,
                 ml,
+                index,
                 &[("mediatype", mediatype)],
             ),
+            Some(Control::Range) => write_range(w, reference, question, ml, index),
         },
         Kind::Select { multiple, list } => {
-            write_select(w, *multiple, list, reference, question, ml)
+            write_select(w, *multiple, list, reference, question, ml, index)
         }
         Kind::Unknown(_) => Ok(()),
     }
@@ -545,6 +571,7 @@ fn control(
     reference: &str,
     question: &Question,
     ml: bool,
+    index: &HashMap<String, Vec<Step>>,
     extra: &[(&str, &str)],
 ) -> Result<(), XformError> {
     let mut element = BytesStart::new(tag);
@@ -556,9 +583,34 @@ fn control(
         element.push_attribute(*attr);
     }
     w.write_event(Event::Start(element))?;
-    write_label(w, question, reference, ml)?;
+    write_label(w, question, reference, ml, index)?;
     write_hint(w, question, reference, ml)?;
     close(w, tag)?;
+    Ok(())
+}
+
+/// Write a `<range>` control with `start`/`end`/`step` from `parameters`.
+fn write_range(
+    w: &mut W,
+    reference: &str,
+    question: &Question,
+    ml: bool,
+    index: &HashMap<String, Vec<Step>>,
+) -> Result<(), XformError> {
+    let mut element = BytesStart::new("range");
+    element.push_attribute(("ref", reference));
+    if let Some(appearance) = &question.appearance {
+        element.push_attribute(("appearance", appearance.as_str()));
+    }
+    for key in ["start", "end", "step"] {
+        if let Some(value) = question.parameter(key) {
+            element.push_attribute((key, value));
+        }
+    }
+    w.write_event(Event::Start(element))?;
+    write_label(w, question, reference, ml, index)?;
+    write_hint(w, question, reference, ml)?;
+    close(w, "range")?;
     Ok(())
 }
 
@@ -570,6 +622,7 @@ fn write_select(
     reference: &str,
     question: &Question,
     ml: bool,
+    index: &HashMap<String, Vec<Step>>,
 ) -> Result<(), XformError> {
     let tag = if multiple { "select" } else { "select1" };
     let mut element = BytesStart::new(tag);
@@ -578,7 +631,7 @@ fn write_select(
         element.push_attribute(("appearance", appearance.as_str()));
     }
     w.write_event(Event::Start(element))?;
-    write_label(w, question, reference, ml)?;
+    write_label(w, question, reference, ml, index)?;
     write_hint(w, question, reference, ml)?;
 
     // Raw content keeps the apostrophes in the nodeset literal (not `&apos;`).
@@ -599,15 +652,77 @@ fn write_select(
     Ok(())
 }
 
-/// Write a control's `<label>`: an itext reference when multilingual, else
-/// inline text.
-fn write_label(w: &mut W, q: &Question, reference: &str, ml: bool) -> Result<(), XformError> {
+/// Write a control's `<label>`: an itext reference when multilingual, an
+/// `<output>`-bearing mixed label when it has `${…}`, else plain text.
+fn write_label(
+    w: &mut W,
+    q: &Question,
+    reference: &str,
+    ml: bool,
+    index: &HashMap<String, Vec<Step>>,
+) -> Result<(), XformError> {
     if ml && q.label.is_multilingual() {
         write_itext_ref(w, "label", &format!("{reference}:label"))?;
     } else if let Some(text) = q.label.single() {
-        text_element(w, "label", text)?;
+        if text.contains("${") {
+            write_output_label(w, text, q, index)?;
+        } else {
+            text_element(w, "label", text)?;
+        }
     }
     Ok(())
+}
+
+/// Write a `<label>` whose `${name}` references become `<output>` elements.
+fn write_output_label(
+    w: &mut W,
+    text: &str,
+    question: &Question,
+    index: &HashMap<String, Vec<Step>>,
+) -> Result<(), XformError> {
+    open(w, "label")?;
+    let mut rest = text;
+    while let Some(start) = rest.find("${") {
+        let (literal, tail) = rest.split_at(start);
+        if !literal.is_empty() {
+            w.write_event(Event::Text(BytesText::new(literal)))?;
+        }
+        let tail = &tail[2..];
+        match tail.find('}') {
+            Some(end) => {
+                let name = &tail[..end];
+                match resolve_reference(index, &question.name, name) {
+                    Some(xpath) => {
+                        let mut output = BytesStart::new("output");
+                        output.push_attribute(("value", format!(" {xpath} ").as_str()));
+                        w.write_event(Event::Empty(output))?;
+                    }
+                    None => w.write_event(Event::Text(BytesText::new(&format!("${{{name}}}"))))?,
+                }
+                rest = &tail[end + 1..];
+            }
+            None => {
+                w.write_event(Event::Text(BytesText::new("${")))?;
+                rest = tail;
+            }
+        }
+    }
+    if !rest.is_empty() {
+        w.write_event(Event::Text(BytesText::new(rest)))?;
+    }
+    close(w, "label")?;
+    Ok(())
+}
+
+/// Resolve `${target}` referenced from `context` to its XForm XPath.
+fn resolve_reference(
+    index: &HashMap<String, Vec<Step>>,
+    context: &str,
+    target: &str,
+) -> Option<String> {
+    let context = index.get(context)?;
+    let target = index.get(target)?;
+    Some(reference_xpath(context, target))
 }
 
 /// Write a control's `<hint>` when present.

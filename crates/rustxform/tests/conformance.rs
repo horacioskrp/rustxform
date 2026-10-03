@@ -62,6 +62,7 @@ golden!(conformance_types_and_metadata_form, "types");
 golden!(conformance_groups_and_repeats_form, "groups");
 golden!(conformance_logic_and_references_form, "logic");
 golden!(conformance_multilingual_form, "multi");
+golden!(conformance_advanced_columns_form, "advanced");
 
 #[test]
 fn xlsx_reader_matches_markdown_golden() {

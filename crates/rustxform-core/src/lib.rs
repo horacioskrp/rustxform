@@ -80,6 +80,8 @@ pub enum Kind {
 pub enum Control {
     /// `<input>`.
     Input,
+    /// `<range>` (uses `start`/`end`/`step` from `parameters`).
+    Range,
     /// `<trigger>` (e.g. `acknowledge`).
     Trigger,
     /// `<upload>` with the given `mediatype`.
@@ -134,6 +136,23 @@ pub struct Question {
     pub required: Option<String>,
     /// Raw `read_only` column value, if any.
     pub readonly: Option<String>,
+    /// `constraint_message` column, if any.
+    pub constraint_message: Option<String>,
+    /// `required_message` column, if any.
+    pub required_message: Option<String>,
+    /// Parsed `parameters` column, as `(key, value)` pairs.
+    pub parameters: Vec<(String, String)>,
+}
+
+impl Question {
+    /// The value of a parameter from the `parameters` column, if present.
+    #[must_use]
+    pub fn parameter(&self, key: &str) -> Option<&str> {
+        self.parameters
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+    }
 }
 
 /// One option within a choice list.
@@ -220,7 +239,7 @@ pub fn resolve_builtin(kind: &str) -> Option<Builtin> {
         "text" => b(input, "string", false, None),
         "integer" => b(input, "int", false, None),
         "decimal" => b(input, "decimal", false, None),
-        "range" => b(input, "int", false, None),
+        "range" => b(Some(Control::Range), "int", false, None),
         "date" => b(input, "date", false, None),
         "time" => b(input, "time", false, None),
         "dateTime" => b(input, "dateTime", false, None),
