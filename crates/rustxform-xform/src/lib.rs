@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
-use rustxform_core::{Container, Control, Kind, Node, Question, Survey};
+use rustxform_core::{Container, Control, Kind, Localized, Node, Question, Survey};
 use rustxform_expr::rewrite_references;
 
 /// Name of the primary instance root element.
@@ -71,7 +71,13 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
         w.write_event(Event::Empty(instance))?;
     }
     let index = build_index(&survey.children);
-    write_binds(&mut w, &survey.children, &format!("/{ROOT}"), &index)?;
+    write_binds(
+        &mut w,
+        &survey.children,
+        &format!("/{ROOT}"),
+        &index,
+        multilingual,
+    )?;
     write_meta_binds(&mut w, survey)?;
 
     close(&mut w, "model")?;
@@ -188,6 +194,20 @@ fn write_itext_questions(
         match node {
             Node::Question(q) => {
                 let path = format!("{parent}/{}", q.name);
+                if q.constraint_message.is_multilingual() {
+                    write_text(
+                        w,
+                        &format!("{path}:jr:constraintMsg"),
+                        q.constraint_message.for_lang(lang).unwrap_or_default(),
+                    )?;
+                }
+                if q.required_message.is_multilingual() {
+                    write_text(
+                        w,
+                        &format!("{path}:jr:requiredMsg"),
+                        q.required_message.for_lang(lang).unwrap_or_default(),
+                    )?;
+                }
                 if label_uses_itext(q, ml) {
                     let value = if ml {
                         q.label.for_lang(lang).unwrap_or_default()
@@ -393,11 +413,14 @@ fn write_binds(
     nodes: &[Node],
     parent: &str,
     index: &HashMap<String, Vec<Step>>,
+    ml: bool,
 ) -> Result<(), XformError> {
     for node in nodes {
         match node {
-            Node::Question(q) => write_bind(w, q, &format!("{parent}/{}", q.name), index)?,
-            Node::Group(c) => write_binds(w, &c.children, &format!("{parent}/{}", c.name), index)?,
+            Node::Question(q) => write_bind(w, q, &format!("{parent}/{}", q.name), index, ml)?,
+            Node::Group(c) => {
+                write_binds(w, &c.children, &format!("{parent}/{}", c.name), index, ml)?;
+            }
             Node::Repeat(c) => {
                 if let Some(count) = &c.count {
                     let mut bind = BytesStart::new("bind");
@@ -407,7 +430,7 @@ fn write_binds(
                     bind.push_attribute(("calculate", count.as_str()));
                     w.write_event(Event::Empty(bind))?;
                 }
-                write_binds(w, &c.children, &format!("{parent}/{}", c.name), index)?;
+                write_binds(w, &c.children, &format!("{parent}/{}", c.name), index, ml)?;
             }
         }
     }
@@ -420,6 +443,7 @@ fn write_bind(
     question: &Question,
     nodeset: &str,
     index: &HashMap<String, Vec<Step>>,
+    ml: bool,
 ) -> Result<(), XformError> {
     let empty: Vec<Step> = Vec::new();
     let context = index.get(&question.name).unwrap_or(&empty);
@@ -436,12 +460,12 @@ fn write_bind(
                 bind.push_attribute(("jr:preloadParams", p.params));
             } else {
                 bind.push_attribute(("type", b.bind_type));
-                push_logic_attributes(&mut bind, question, &resolve, b.readonly);
+                push_logic_attributes(&mut bind, question, &resolve, b.readonly, nodeset, ml);
             }
         }
         Kind::Select { .. } | Kind::Unknown(_) => {
             bind.push_attribute(("type", "string"));
-            push_logic_attributes(&mut bind, question, &resolve, false);
+            push_logic_attributes(&mut bind, question, &resolve, false, nodeset, ml);
         }
     }
     w.write_event(Event::Empty(bind))?;
@@ -455,6 +479,8 @@ fn push_logic_attributes(
     q: &Question,
     resolve: &impl Fn(&str) -> Option<String>,
     base_readonly: bool,
+    nodeset: &str,
+    ml: bool,
 ) {
     if let Some(value) = readonly_value(q, base_readonly, resolve) {
         bind.push_attribute(("readonly", value.as_str()));
@@ -462,20 +488,26 @@ fn push_logic_attributes(
     if let Some(value) = flag_value(q.required.as_deref(), resolve) {
         bind.push_attribute(("required", value.as_str()));
     }
-    if let Some(msg) = &q.required_message {
-        bind.push_attribute(("jr:requiredMsg", msg.as_str()));
-    }
+    push_message(bind, "jr:requiredMsg", &q.required_message, nodeset, ml);
     if let Some(expr) = &q.relevant {
         bind.push_attribute(("relevant", rewrite_references(expr, resolve).as_str()));
     }
     if let Some(expr) = &q.constraint {
         bind.push_attribute(("constraint", rewrite_references(expr, resolve).as_str()));
     }
-    if let Some(msg) = &q.constraint_message {
-        bind.push_attribute(("jr:constraintMsg", msg.as_str()));
-    }
+    push_message(bind, "jr:constraintMsg", &q.constraint_message, nodeset, ml);
     if let Some(expr) = &q.calculation {
         bind.push_attribute(("calculate", rewrite_references(expr, resolve).as_str()));
+    }
+}
+
+/// Push a `jr:*Msg` attribute: an itext reference when multilingual, else the
+/// plain single-language text.
+fn push_message(bind: &mut BytesStart<'_>, attr: &str, msg: &Localized, nodeset: &str, ml: bool) {
+    if ml && msg.is_multilingual() {
+        bind.push_attribute((attr, format!("jr:itext('{nodeset}:{attr}')").as_str()));
+    } else if let Some(text) = msg.single() {
+        bind.push_attribute((attr, text));
     }
 }
 

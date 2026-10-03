@@ -122,7 +122,10 @@ fn collect_languages(survey: Option<&Sheet>, choices: Option<&Sheet>) -> Vec<Str
         }
     };
     if let Some(header) = survey.and_then(|s| s.rows.first()) {
-        add(header, &["label", "hint"]);
+        add(
+            header,
+            &["label", "hint", "constraint_message", "required_message"],
+        );
     }
     if let Some(header) = choices.and_then(|s| s.rows.first()) {
         add(header, &["label"]);
@@ -151,8 +154,8 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
     let constraint_col = column("constraint");
     let required_col = column("required");
     let readonly_col = column("read_only").or_else(|| column("readonly"));
-    let cmsg_col = column("constraint_message");
-    let rmsg_col = column("required_message");
+    let cmsg_cols = loc_columns(header, "constraint_message");
+    let rmsg_cols = loc_columns(header, "required_message");
     let params_col = column("parameters");
     let default_col = column("default");
     let count_col = column("repeat_count");
@@ -202,8 +205,8 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
                     constraint: optional(cell(constraint_col)),
                     required: optional(cell(required_col)),
                     readonly: optional(cell(readonly_col)),
-                    constraint_message: optional(cell(cmsg_col)),
-                    required_message: optional(cell(rmsg_col)),
+                    constraint_message: localized(&cmsg_cols, row),
+                    required_message: localized(&rmsg_cols, row),
                     parameters: parse_parameters(cell(params_col)),
                     media: media_cols
                         .langs

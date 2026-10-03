@@ -142,10 +142,10 @@ pub struct Question {
     pub required: Option<String>,
     /// Raw `read_only` column value, if any.
     pub readonly: Option<String>,
-    /// `constraint_message` column, if any.
-    pub constraint_message: Option<String>,
-    /// `required_message` column, if any.
-    pub required_message: Option<String>,
+    /// `constraint_message` column (single- or multi-language).
+    pub constraint_message: Localized,
+    /// `required_message` column (single- or multi-language).
+    pub required_message: Localized,
     /// Parsed `parameters` column, as `(key, value)` pairs.
     pub parameters: Vec<(String, String)>,
     /// Label media, as `(form, file)` pairs (e.g. `("image", "logo.png")`).
