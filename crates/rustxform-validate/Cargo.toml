@@ -6,7 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Form validations for rustxform, added from Phase 7."
+description = "Form validations and warnings for rustxform surveys."
+readme = "README.md"
+keywords = ["xlsform", "xform", "forms", "validation"]
+categories = ["parser-implementations"]
 
 [dependencies]
 rustxform-core.workspace = true

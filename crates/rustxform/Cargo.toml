@@ -7,7 +7,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "XLSForm → XForm compiler: end-to-end facade."
-readme = "../../README.md"
+readme = "README.md"
 keywords = ["xlsform", "xform", "forms", "survey", "compiler"]
 categories = ["parser-implementations", "text-processing"]
 

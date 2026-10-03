@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Emit XForm XML from the rustxform survey model."
+readme = "README.md"
+keywords = ["xlsform", "xform", "xml", "forms"]
+categories = ["encoding", "text-processing"]
 
 [dependencies]
 rustxform-core.workspace = true

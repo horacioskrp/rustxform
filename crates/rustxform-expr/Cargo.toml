@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Tokenize XLSForm expressions and rewrite ${ref} into XPath."
+readme = "README.md"
+keywords = ["xlsform", "xform", "xpath", "expression"]
+categories = ["parser-implementations", "text-processing"]
 
 [lints]
 workspace = true

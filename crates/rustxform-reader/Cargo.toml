@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Workbook readers (Markdown first; XLSX/XLS/CSV later) for rustxform."
+readme = "README.md"
+keywords = ["xlsform", "xform", "spreadsheet", "parser"]
+categories = ["parser-implementations"]
 
 [dependencies]
 thiserror.workspace = true

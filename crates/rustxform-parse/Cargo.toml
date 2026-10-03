@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Normalize a raw workbook into the rustxform survey model."
+readme = "README.md"
+keywords = ["xlsform", "xform", "forms", "parser"]
+categories = ["parser-implementations"]
 
 [dependencies]
 rustxform-core.workspace = true

@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Core data model (Survey, Question, Settings) for rustxform."
+readme = "README.md"
+keywords = ["xlsform", "xform", "forms", "survey"]
+categories = ["data-structures"]
 
 [lints]
 workspace = true

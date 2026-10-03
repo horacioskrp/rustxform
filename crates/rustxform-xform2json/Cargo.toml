@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Reverse direction: parse an XForm back into the rustxform survey model."
+readme = "README.md"
+keywords = ["xlsform", "xform", "xml", "parser"]
+categories = ["parser-implementations"]
 
 [dependencies]
 rustxform-core.workspace = true
