@@ -54,8 +54,13 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
     model.push_attribute(("odk:xforms-version", "1.0.0"));
     w.write_event(Event::Start(model))?;
 
-    if multilingual {
-        write_itext(&mut w, survey)?;
+    let itext_langs: Vec<&str> = if multilingual {
+        survey.languages.iter().map(String::as_str).collect()
+    } else {
+        vec!["default"]
+    };
+    if multilingual || any_media(&survey.children) {
+        write_itext(&mut w, survey, &itext_langs, multilingual)?;
     }
     write_primary_instance(&mut w, survey, form_id)?;
     write_choice_instances(&mut w, survey, multilingual)?;
@@ -102,31 +107,55 @@ fn default_language(survey: &Survey) -> Option<&str> {
     }
 }
 
+/// Does any question anywhere in the tree carry label media?
+fn any_media(nodes: &[Node]) -> bool {
+    nodes.iter().any(|node| match node {
+        Node::Question(q) => !q.media.is_empty(),
+        Node::Group(c) | Node::Repeat(c) => any_media(&c.children),
+    })
+}
+
+/// Whether a question's label is rendered via itext (multilingual or media).
+fn label_uses_itext(q: &Question, ml: bool) -> bool {
+    (ml && q.label.is_multilingual()) || !q.media.is_empty()
+}
+
+/// Whether a question's hint is rendered via itext.
+fn hint_uses_itext(q: &Question, ml: bool) -> bool {
+    ml && q.hint.is_multilingual()
+}
+
 /// Emit the `<itext>` block: one `<translation>` per language, choice texts
-/// first, then question label/hint texts in document order.
-fn write_itext(w: &mut W, survey: &Survey) -> Result<(), XformError> {
-    let default = default_language(survey);
+/// first (multilingual only), then question label/hint texts.
+fn write_itext(w: &mut W, survey: &Survey, langs: &[&str], ml: bool) -> Result<(), XformError> {
+    let default = if ml {
+        default_language(survey)
+    } else {
+        Some("default")
+    };
     let mut lists: Vec<&str> = Vec::new();
     collect_lists(&survey.children, &mut lists);
 
     open(w, "itext")?;
-    for lang in &survey.languages {
+    for &lang in langs {
         let mut translation = BytesStart::new("translation");
-        translation.push_attribute(("lang", lang.as_str()));
-        if Some(lang.as_str()) == default {
+        translation.push_attribute(("lang", lang));
+        if Some(lang) == default {
             translation.push_attribute(("default", "true()"));
         }
         w.write_event(Event::Start(translation))?;
 
-        for list in &lists {
-            if let Some(choice_list) = survey.choice_list(list) {
-                for (i, item) in choice_list.items.iter().enumerate() {
-                    let id = format!("{list}-{i}");
-                    write_text(w, &id, item.label.for_lang(lang).unwrap_or_default())?;
+        if ml {
+            for list in &lists {
+                if let Some(choice_list) = survey.choice_list(list) {
+                    for (i, item) in choice_list.items.iter().enumerate() {
+                        let id = format!("{list}-{i}");
+                        write_text(w, &id, item.label.for_lang(lang).unwrap_or_default())?;
+                    }
                 }
             }
         }
-        write_itext_questions(w, &survey.children, &format!("/{ROOT}"), lang)?;
+        write_itext_questions(w, &survey.children, &format!("/{ROOT}"), lang, ml)?;
 
         close(w, "translation")?;
     }
@@ -134,25 +163,27 @@ fn write_itext(w: &mut W, survey: &Survey) -> Result<(), XformError> {
     Ok(())
 }
 
-/// Emit `<text id><value>…</value></text>` entries for questions under `parent`.
+/// Emit `<text>` entries for questions whose label/hint use itext.
 fn write_itext_questions(
     w: &mut W,
     nodes: &[Node],
     parent: &str,
     lang: &str,
+    ml: bool,
 ) -> Result<(), XformError> {
     for node in nodes {
         match node {
             Node::Question(q) => {
                 let path = format!("{parent}/{}", q.name);
-                if q.label.is_multilingual() {
-                    write_text(
-                        w,
-                        &format!("{path}:label"),
-                        q.label.for_lang(lang).unwrap_or_default(),
-                    )?;
+                if label_uses_itext(q, ml) {
+                    let value = if ml {
+                        q.label.for_lang(lang).unwrap_or_default()
+                    } else {
+                        q.label.single().unwrap_or_default()
+                    };
+                    write_label_text(w, &format!("{path}:label"), value, &q.media)?;
                 }
-                if q.hint.is_multilingual() {
+                if hint_uses_itext(q, ml) {
                     write_text(
                         w,
                         &format!("{path}:hint"),
@@ -161,10 +192,40 @@ fn write_itext_questions(
                 }
             }
             Node::Group(c) | Node::Repeat(c) => {
-                write_itext_questions(w, &c.children, &format!("{parent}/{}", c.name), lang)?;
+                write_itext_questions(w, &c.children, &format!("{parent}/{}", c.name), lang, ml)?;
             }
         }
     }
+    Ok(())
+}
+
+/// Emit `<text id><value>…</value>[<value form="..">jr://..</value>]</text>`.
+fn write_label_text(
+    w: &mut W,
+    id: &str,
+    value: &str,
+    media: &[(String, String)],
+) -> Result<(), XformError> {
+    let mut text = BytesStart::new("text");
+    text.push_attribute(("id", id));
+    w.write_event(Event::Start(text))?;
+    text_element(w, "value", value)?;
+    for (form, file) in media {
+        let directory = match form.as_str() {
+            "image" => "images",
+            "audio" => "audio",
+            "video" => "video",
+            other => other,
+        };
+        let mut element = BytesStart::new("value");
+        element.push_attribute(("form", form.as_str()));
+        w.write_event(Event::Start(element))?;
+        w.write_event(Event::Text(BytesText::new(&format!(
+            "jr://{directory}/{file}"
+        ))))?;
+        close(w, "value")?;
+    }
+    close(w, "text")?;
     Ok(())
 }
 
@@ -661,7 +722,7 @@ fn write_label(
     ml: bool,
     index: &HashMap<String, Vec<Step>>,
 ) -> Result<(), XformError> {
-    if ml && q.label.is_multilingual() {
+    if label_uses_itext(q, ml) {
         write_itext_ref(w, "label", &format!("{reference}:label"))?;
     } else if let Some(text) = q.label.single() {
         if text.contains("${") {
@@ -727,7 +788,7 @@ fn resolve_reference(
 
 /// Write a control's `<hint>` when present.
 fn write_hint(w: &mut W, q: &Question, reference: &str, ml: bool) -> Result<(), XformError> {
-    if ml && q.hint.is_multilingual() {
+    if hint_uses_itext(q, ml) {
         write_itext_ref(w, "hint", &format!("{reference}:hint"))?;
     } else if let Some(text) = q.hint.single() {
         text_element(w, "hint", text)?;

@@ -154,6 +154,7 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
     let params_col = column("parameters");
     let label_cols = loc_columns(header, "label");
     let hint_cols = loc_columns(header, "hint");
+    let media_cols = loc_columns(header, "media");
 
     let mut root: Vec<Node> = Vec::new();
     let mut stack: Vec<Frame> = Vec::new();
@@ -198,6 +199,14 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
                     constraint_message: optional(cell(cmsg_col)),
                     required_message: optional(cell(rmsg_col)),
                     parameters: parse_parameters(cell(params_col)),
+                    media: media_cols
+                        .langs
+                        .iter()
+                        .filter_map(|(form, i)| {
+                            let file = cell(Some(*i));
+                            (!file.is_empty()).then(|| (form.clone(), file.to_owned()))
+                        })
+                        .collect(),
                 };
                 place(&mut root, &mut stack, Node::Question(question));
             }

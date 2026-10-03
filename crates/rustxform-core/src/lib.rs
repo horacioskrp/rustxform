@@ -142,6 +142,8 @@ pub struct Question {
     pub required_message: Option<String>,
     /// Parsed `parameters` column, as `(key, value)` pairs.
     pub parameters: Vec<(String, String)>,
+    /// Label media, as `(form, file)` pairs (e.g. `("image", "logo.png")`).
+    pub media: Vec<(String, String)>,
 }
 
 impl Question {
