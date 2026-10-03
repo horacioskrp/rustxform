@@ -7,7 +7,7 @@
 mod common;
 
 use common::{assert_xform_eq, canonicalize, xform_diff};
-use rustxform::convert_markdown;
+use rustxform::{convert_csv, convert_markdown, convert_xlsx};
 
 #[test]
 fn oracle_ignores_attribute_order() {
@@ -62,3 +62,21 @@ golden!(conformance_types_and_metadata_form, "types");
 golden!(conformance_groups_and_repeats_form, "groups");
 golden!(conformance_logic_and_references_form, "logic");
 golden!(conformance_multilingual_form, "multi");
+
+#[test]
+fn xlsx_reader_matches_markdown_golden() {
+    let xform = convert_xlsx(include_bytes!("fixtures/simple.xlsx")).expect("conversion succeeds");
+    assert_xform_eq(include_str!("fixtures/simple.xml"), &xform);
+}
+
+#[test]
+fn xlsx_reader_handles_multilingual_form() {
+    let xform = convert_xlsx(include_bytes!("fixtures/multi.xlsx")).expect("conversion succeeds");
+    assert_xform_eq(include_str!("fixtures/multi.xml"), &xform);
+}
+
+#[test]
+fn csv_reader_matches_markdown_golden() {
+    let xform = convert_csv(include_str!("fixtures/simple.csv")).expect("conversion succeeds");
+    assert_xform_eq(include_str!("fixtures/simple.xml"), &xform);
+}

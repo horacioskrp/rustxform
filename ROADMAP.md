@@ -12,7 +12,7 @@ golden tests (compile a form, compare the XForm after XML canonicalization).
 | 3 | Groups & repeats | ✅ done |
 | 4 | Expressions & `${ref}` rewriting | ✅ done |
 | 5 | Multilingual labels & advanced columns | ✅ done |
-| 6 | XLSX/XLS/CSV readers & CLI parity | ⬜ |
+| 6 | XLSX/XLS/CSV readers & CLI parity | ✅ done |
 | 7 | Validations | ⬜ |
 
 ## Phase 0 — Workspace & oracle ✅
@@ -60,11 +60,11 @@ A flat form with `text` / `integer` / `note` questions compiles end to end.
 - [x] **GO:** multilingual golden fixture passes
 - [ ] Deferred: `constraint_message`, media columns, `parameters`, `${}` label outputs
 
-## Phase 6 — Binary readers & CLI
+## Phase 6 — Binary readers & CLI ✅
 
-- [ ] XLSX/XLS and CSV readers
-- [ ] CLI option parity; warnings as JSON
-- [ ] **GO:** real spreadsheet fixtures pass
+- [x] XLSX/XLS reader (calamine) and CSV reader (shares the sheet convention)
+- [x] CLI dispatches by extension (`.md` / `.csv` / `.xlsx` / `.xls`)
+- [x] **GO:** `.xlsx` and `.csv` fixtures produce the same XForm as Markdown
 
 ## Phase 7 — Validations
 

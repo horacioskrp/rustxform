@@ -10,6 +10,8 @@ description = "Workbook readers (Markdown first; XLSX/XLS/CSV later) for rustxfo
 
 [dependencies]
 thiserror.workspace = true
+calamine.workspace = true
+csv.workspace = true
 
 [lints]
 workspace = true
