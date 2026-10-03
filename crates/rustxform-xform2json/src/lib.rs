@@ -43,15 +43,166 @@ const CONTROLS: &[&str] = &[
 pub fn xform_to_survey(xml: &str) -> Result<Survey, Xform2JsonError> {
     let binds = collect_binds(xml)?;
     let (title, form_id) = collect_metadata(xml)?;
-    let children = collect_body_nodes(xml, &binds)?;
+    let body = collect_body_nodes(xml, &binds)?;
+    let order = collect_instance_order(xml)?;
     let choices = collect_choices(xml)?;
 
     let mut survey = Survey::default();
     survey.settings.title = title;
     survey.settings.form_id = form_id;
-    survey.children = children;
+    survey.children = merge_top_level(order, body, &binds);
     survey.choices = choices;
+    survey.audit = binds.contains_key(&format!("/{ROOT}/meta/audit"));
     Ok(survey)
+}
+
+/// Primary-instance root element name.
+const ROOT: &str = "data";
+
+/// Merge the body-control tree with the primary-instance order, inserting
+/// top-level data-only nodes (`calculate`, metadata preloads) that carry no
+/// body control, at their correct positions. Nested data-only nodes are not
+/// yet recovered.
+fn merge_top_level(
+    order: Vec<String>,
+    body: Vec<Node>,
+    binds: &HashMap<String, Bind>,
+) -> Vec<Node> {
+    let mut result = Vec::with_capacity(order.len());
+    let mut body = body.into_iter().peekable();
+    for name in order {
+        if body.peek().is_some_and(|n| node_name(n) == name.as_str()) {
+            result.push(body.next().expect("peeked"));
+        } else if let Some(bind) = binds.get(&format!("/{ROOT}/{name}")) {
+            result.push(Node::Question(data_only_question(name, bind)));
+        }
+    }
+    result.extend(body);
+    result
+}
+
+/// A node's own name.
+fn node_name(node: &Node) -> &str {
+    match node {
+        Node::Question(q) => &q.name,
+        Node::Group(c) | Node::Repeat(c) => &c.name,
+    }
+}
+
+/// Build a data-only [`Question`] (no body control) from its bind: a metadata
+/// preload, or a `calculate`.
+fn data_only_question(name: String, bind: &Bind) -> Question {
+    let token = match (bind.preload.as_deref(), bind.preload_params.as_deref()) {
+        (Some(preload), Some(params)) => preload_token(preload, params),
+        _ if bind.calculate.is_some() => "calculate",
+        _ => "text",
+    };
+    let kind =
+        resolve_builtin(token).map_or_else(|| Kind::Unknown(token.to_owned()), Kind::Builtin);
+    Question {
+        kind,
+        name,
+        label: Localized::default(),
+        hint: Localized::default(),
+        guidance_hint: Localized::default(),
+        appearance: None,
+        calculation: bind.calculate.clone(),
+        relevant: bind.relevant.clone(),
+        constraint: bind.constraint.clone(),
+        required: bind.required.clone(),
+        readonly: bind.readonly.clone(),
+        constraint_message: Localized::default(),
+        required_message: Localized::default(),
+        parameters: Vec::new(),
+        media: Vec::new(),
+        default: None,
+        choice_filter: None,
+        save_to: None,
+        trigger: None,
+    }
+}
+
+/// Reverse the `jr:preload` / `jr:preloadParams` pair to its XLSForm type token.
+fn preload_token(preload: &str, params: &str) -> &'static str {
+    match (preload, params) {
+        ("timestamp", "start") => "start",
+        ("timestamp", "end") => "end",
+        ("date", "today") => "today",
+        ("property", "deviceid") => "deviceid",
+        ("property", "username") => "username",
+        ("property", "phonenumber") => "phonenumber",
+        ("property", "email") => "email",
+        ("property", "simserial") => "simserial",
+        ("property", "subscriberid") => "subscriberid",
+        _ => "calculate",
+    }
+}
+
+/// Collect the primary instance's top-level child element names in order,
+/// skipping `meta`, synthetic `…_count` nodes, and the duplicate repeat
+/// instance (keeping the `jr:template` occurrence only).
+fn collect_instance_order(xml: &str) -> Result<Vec<String>, Xform2JsonError> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+
+    let mut names = Vec::new();
+    let mut in_primary = false;
+    let mut depth = 0i32;
+    let mut skip_next: Option<String> = None;
+
+    loop {
+        match read(&mut reader)? {
+            Event::Eof => break,
+            Event::Start(e) => {
+                let name = local_name(e.name().as_ref());
+                if !in_primary {
+                    if name == "instance" && attr(&e, "id").is_none() && attr(&e, "src").is_none() {
+                        in_primary = true;
+                        depth = 0;
+                    }
+                    continue;
+                }
+                if depth == 1 {
+                    let is_template = attr(&e, "template").is_some();
+                    record_top_level(&name, is_template, &mut names, &mut skip_next);
+                }
+                depth += 1;
+            }
+            Event::Empty(e) if in_primary && depth == 1 => {
+                let name = local_name(e.name().as_ref());
+                record_top_level(&name, false, &mut names, &mut skip_next);
+            }
+            Event::End(e) if in_primary => {
+                if local_name(e.name().as_ref()) == "instance" {
+                    in_primary = false;
+                } else {
+                    depth -= 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(names)
+}
+
+/// Record a top-level instance node name, honoring the skip rules.
+fn record_top_level(
+    name: &str,
+    is_template: bool,
+    names: &mut Vec<String>,
+    skip_next: &mut Option<String>,
+) {
+    if name == "meta" || name.ends_with("_count") {
+        return;
+    }
+    if skip_next.as_deref() == Some(name) {
+        *skip_next = None; // the live twin of a repeat template
+        return;
+    }
+    names.push(name.to_owned());
+    if is_template {
+        *skip_next = Some(name.to_owned());
+    }
 }
 
 /// Reconstruct inline choice lists from secondary instances of the form
@@ -144,6 +295,8 @@ struct Bind {
     calculate: Option<String>,
     constraint_msg: Option<String>,
     required_msg: Option<String>,
+    preload: Option<String>,
+    preload_params: Option<String>,
 }
 
 /// `nodeset` → its [`Bind`], from the model binds.
@@ -167,6 +320,8 @@ fn collect_binds(xml: &str) -> Result<HashMap<String, Bind>, Xform2JsonError> {
                             calculate: attr(&e, "calculate"),
                             constraint_msg: attr(&e, "constraintMsg"),
                             required_msg: attr(&e, "requiredMsg"),
+                            preload: attr(&e, "preload"),
+                            preload_params: attr(&e, "preloadParams"),
                         },
                     );
                 }
@@ -599,6 +754,13 @@ mod tests {
              |  | select_multiple col | s2 | S2 |\n\
              | choices |\n|  | list_name | name | label |\n|  | yn | y | Yes |\n\
              |  | yn | n | No |\n|  | col | r | Red |\n|  | col | g | Green |\n",
+            // A data-only `calculate` node (no body control).
+            "| survey |\n|  | type | name | label | calculation |\n\
+             |  | integer | a | A |  |\n|  | calculate | dbl |  | ${a} * 2 |\n",
+            // Metadata preloads interleaved with a real question.
+            "| survey |\n|  | type | name | label |\n|  | start | start |  |\n\
+             |  | end | end |  |\n|  | today | today |  |\n|  | deviceid | dev |  |\n\
+             |  | text | q | Q |\n",
         ];
         for md in forms {
             let (first, second) = round_trip(md);

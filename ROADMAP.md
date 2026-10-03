@@ -140,7 +140,9 @@ by a round-trip property test.
       literal pass-through, since the emitter only rewrites `${…}`)
 - [x] Reconstruct inline choice lists from secondary instances (name/label +
       cascade `extra` columns); select questions keep their list id
-- [ ] Recover data-only nodes (`calculate`, preloads) from the instance + binds
+- [x] Recover top-level data-only nodes (`calculate`, metadata preloads, audit)
+      by merging the primary-instance order with the body tree (nested data-only
+      deferred)
 - [ ] Decode `<itext>` into multilingual `label`/`hint`, `languages`,
       `default_language`, media
 - [ ] Recover settings: `version`, `style`, `instance_name`; entities from binds
