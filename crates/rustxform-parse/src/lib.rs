@@ -71,6 +71,7 @@ fn parse_entity(sheet: &Sheet) -> Option<Entity> {
     Some(Entity {
         dataset: dataset.to_owned(),
         label: optional(cell(column("label"))),
+        entity_id: optional(cell(column("entity_id"))),
     })
 }
 

@@ -257,8 +257,10 @@ pub enum Node {
 pub struct Entity {
     /// Target dataset name.
     pub dataset: String,
-    /// Label expression for the created entity, if any.
+    /// Label expression for the entity, if any.
     pub label: Option<String>,
+    /// `entity_id` expression: present ⇒ update mode, absent ⇒ create.
+    pub entity_id: Option<String>,
 }
 
 /// A parsed XLSForm survey: settings, a node tree and choice lists.

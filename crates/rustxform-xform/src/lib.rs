@@ -316,7 +316,14 @@ fn write_primary_instance(w: &mut W, survey: &Survey, form_id: &str) -> Result<(
     if let Some(entity) = &survey.entity {
         let mut element = BytesStart::new("entity");
         element.push_attribute(("dataset", entity.dataset.as_str()));
-        element.push_attribute(("create", "1"));
+        if entity.entity_id.is_some() {
+            element.push_attribute(("update", "1"));
+            element.push_attribute(("baseVersion", ""));
+            element.push_attribute(("trunkVersion", ""));
+            element.push_attribute(("branchId", ""));
+        } else {
+            element.push_attribute(("create", "1"));
+        }
         element.push_attribute(("id", ""));
         w.write_event(Event::Start(element))?;
         w.write_event(Event::Empty(BytesStart::new("label")))?;
@@ -555,28 +562,47 @@ fn write_entity_binds(
     let Some(entity) = &survey.entity else {
         return Ok(());
     };
+    let rewrite = |expr: &str| rewrite_references(expr, |name: &str| resolve_ref(index, &[], name));
 
-    let mut id_bind = BytesStart::new("bind");
-    id_bind.push_attribute(("nodeset", format!("/{ROOT}/meta/entity/@id").as_str()));
-    id_bind.push_attribute(("readonly", "true()"));
-    id_bind.push_attribute(("type", "string"));
-    w.write_event(Event::Empty(id_bind))?;
+    if let Some(id_expr) = &entity.entity_id {
+        // Update: derive the base/trunk/branch versions from the dataset, and
+        // set @id from the entity_id expression (no uuid setvalue).
+        let id = rewrite(id_expr);
+        let item = format!("instance('{}')/root/item[name={id}]", entity.dataset);
+        calc_bind(w, "@baseVersion", &format!("{item}/__version"))?;
+        calc_bind(w, "@trunkVersion", &format!("{item}/__trunkVersion"))?;
+        calc_bind(w, "@branchId", &format!("{item}/__branchId"))?;
+        calc_bind(w, "@id", &id)?;
+    } else {
+        // Create: a fresh uuid() for @id.
+        let mut id_bind = BytesStart::new("bind");
+        id_bind.push_attribute(("nodeset", format!("/{ROOT}/meta/entity/@id").as_str()));
+        id_bind.push_attribute(("readonly", "true()"));
+        id_bind.push_attribute(("type", "string"));
+        w.write_event(Event::Empty(id_bind))?;
 
-    let mut setvalue = BytesStart::new("setvalue");
-    setvalue.push_attribute(("ref", format!("/{ROOT}/meta/entity/@id").as_str()));
-    setvalue.push_attribute(("event", "odk-instance-first-load"));
-    setvalue.push_attribute(("value", "uuid()"));
-    w.write_event(Event::Empty(setvalue))?;
+        let mut setvalue = BytesStart::new("setvalue");
+        setvalue.push_attribute(("ref", format!("/{ROOT}/meta/entity/@id").as_str()));
+        setvalue.push_attribute(("event", "odk-instance-first-load"));
+        setvalue.push_attribute(("value", "uuid()"));
+        w.write_event(Event::Empty(setvalue))?;
+    }
 
     if let Some(label) = &entity.label {
-        let calculate = rewrite_references(label, |name: &str| resolve_ref(index, &[], name));
-        let mut label_bind = BytesStart::new("bind");
-        label_bind.push_attribute(("nodeset", format!("/{ROOT}/meta/entity/label").as_str()));
-        label_bind.push_attribute(("calculate", calculate.as_str()));
-        label_bind.push_attribute(("readonly", "true()"));
-        label_bind.push_attribute(("type", "string"));
-        w.write_event(Event::Empty(label_bind))?;
+        calc_bind(w, "label", &rewrite(label))?;
     }
+    Ok(())
+}
+
+/// Emit `<bind nodeset="/data/meta/entity/{suffix}" calculate=".." readonly
+/// type="string"/>`.
+fn calc_bind(w: &mut W, suffix: &str, calculate: &str) -> Result<(), XformError> {
+    let mut bind = BytesStart::new("bind");
+    bind.push_attribute(("nodeset", format!("/{ROOT}/meta/entity/{suffix}").as_str()));
+    bind.push_attribute(("calculate", calculate));
+    bind.push_attribute(("readonly", "true()"));
+    bind.push_attribute(("type", "string"));
+    w.write_event(Event::Empty(bind))?;
     Ok(())
 }
 
