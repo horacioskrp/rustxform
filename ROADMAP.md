@@ -82,6 +82,10 @@ v1 scope complete.
 - [x] Validations: range parameters, geo defaults; warnings for missing
       settings and unrecognized survey columns
 - [x] CLI `--json` report (status / warnings / errors)
+- [x] More metadata preloads (username, phonenumber, email, simserial,
+      subscriberid)
+- [x] `field-list` group appearance, `repeat_count` (`jr:count`)
+- [x] Settings: `version`, `instance_name`, `style`
 
-Remaining ideas: multilingual `constraint_message`/media, choice filters,
-`search()`/external selects, `search`/cascading selects, published crate.
+Remaining ideas: multilingual `constraint_message`/media, `choice_filter`/
+cascading selects, `select_*_from_file`, `last-saved#`, published crate.

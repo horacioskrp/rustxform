@@ -68,12 +68,14 @@ impl Localized {
 pub enum Kind {
     /// A built-in type with a fixed XForm mapping.
     Builtin(Builtin),
-    /// A `select_one` / `select_multiple` referencing a choice list.
+    /// A `select_one` / `select_multiple` referencing a choice list or file.
     Select {
         /// `true` for `select_multiple`, `false` for `select_one`.
         multiple: bool,
-        /// Name of the referenced choice list.
+        /// The instance id: a choice-list name, or an external file's stem.
         list: String,
+        /// External source filename for `select_*_from_file`; `None` inline.
+        file: Option<String>,
     },
     /// A type token not yet supported; emitted as a plain string bind.
     Unknown(String),

@@ -146,7 +146,9 @@ fn check_question(
     errors: &mut Vec<ValidationError>,
 ) {
     match &q.kind {
-        Kind::Select { list, .. } if !lists.contains(list.as_str()) => {
+        Kind::Select {
+            list, file: None, ..
+        } if !lists.contains(list.as_str()) => {
             errors.push(ValidationError::UnknownChoiceList {
                 question: q.name.clone(),
                 list: list.clone(),

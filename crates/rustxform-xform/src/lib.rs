@@ -137,8 +137,8 @@ fn write_itext(w: &mut W, survey: &Survey, langs: &[&str], ml: bool) -> Result<(
     } else {
         Some("default")
     };
-    let mut lists: Vec<&str> = Vec::new();
-    collect_lists(&survey.children, &mut lists);
+    let mut selects: Vec<(&str, Option<&str>)> = Vec::new();
+    collect_selects(&survey.children, &mut selects);
 
     open(w, "itext")?;
     for &lang in langs {
@@ -150,7 +150,10 @@ fn write_itext(w: &mut W, survey: &Survey, langs: &[&str], ml: bool) -> Result<(
         w.write_event(Event::Start(translation))?;
 
         if ml {
-            for list in &lists {
+            for (list, file) in &selects {
+                if file.is_some() {
+                    continue; // external files carry their own labels
+                }
                 if let Some(choice_list) = survey.choice_list(list) {
                     for (i, item) in choice_list.items.iter().enumerate() {
                         let id = format!("{list}-{i}");
@@ -315,10 +318,24 @@ fn write_choice_instances(
     survey: &Survey,
     multilingual: bool,
 ) -> Result<(), XformError> {
-    let mut seen: Vec<&str> = Vec::new();
-    collect_lists(&survey.children, &mut seen);
+    let mut seen: Vec<(&str, Option<&str>)> = Vec::new();
+    collect_selects(&survey.children, &mut seen);
 
-    for list in seen {
+    for (list, file) in seen {
+        if let Some(file) = file {
+            // External source: an empty instance pointing at the file.
+            let directory = if file.ends_with(".csv") {
+                "file-csv"
+            } else {
+                "file"
+            };
+            let mut instance = BytesStart::new("instance");
+            instance.push_attribute(("id", list));
+            instance.push_attribute(("src", format!("jr://{directory}/{file}").as_str()));
+            w.write_event(Event::Empty(instance))?;
+            continue;
+        }
+
         let Some(choice_list) = survey.choice_list(list) else {
             continue;
         };
@@ -345,18 +362,19 @@ fn write_choice_instances(
     Ok(())
 }
 
-/// Collect referenced choice-list names in document order, de-duplicated.
-fn collect_lists<'a>(nodes: &'a [Node], seen: &mut Vec<&'a str>) {
+/// Collect referenced selects in document order as `(instance id, file)`,
+/// de-duplicated by id. `file` is `Some` for external `select_*_from_file`.
+fn collect_selects<'a>(nodes: &'a [Node], seen: &mut Vec<(&'a str, Option<&'a str>)>) {
     for node in nodes {
         match node {
             Node::Question(q) => {
-                if let Kind::Select { list, .. } = &q.kind {
-                    if !seen.contains(&list.as_str()) {
-                        seen.push(list);
+                if let Kind::Select { list, file, .. } = &q.kind {
+                    if !seen.iter().any(|(id, _)| *id == list.as_str()) {
+                        seen.push((list.as_str(), file.as_deref()));
                     }
                 }
             }
-            Node::Group(c) | Node::Repeat(c) => collect_lists(&c.children, seen),
+            Node::Group(c) | Node::Repeat(c) => collect_selects(&c.children, seen),
         }
     }
 }
@@ -661,9 +679,7 @@ fn write_control(
             ),
             Some(Control::Range) => write_range(w, reference, question, ml, index),
         },
-        Kind::Select { multiple, list } => {
-            write_select(w, *multiple, list, reference, question, ml, index)
-        }
+        Kind::Select { .. } => write_select(w, reference, question, ml, index),
         Kind::Unknown(_) => Ok(()),
     }
 }
@@ -721,14 +737,22 @@ fn write_range(
 /// Write a `<select1>`/`<select>` control with an itemset over a list instance.
 fn write_select(
     w: &mut W,
-    multiple: bool,
-    list: &str,
     reference: &str,
     question: &Question,
     ml: bool,
     index: &HashMap<String, Vec<Step>>,
 ) -> Result<(), XformError> {
-    let tag = if multiple { "select" } else { "select1" };
+    let Kind::Select {
+        multiple,
+        list,
+        file,
+    } = &question.kind
+    else {
+        return Ok(());
+    };
+    let external = file.is_some();
+
+    let tag = if *multiple { "select" } else { "select1" };
     let mut element = BytesStart::new(tag);
     element.push_attribute(("ref", reference));
     if let Some(appearance) = &question.appearance {
@@ -745,7 +769,7 @@ fn write_select(
     );
     w.write_event(Event::Start(itemset))?;
     ref_element(w, "value", "name")?;
-    if ml {
+    if ml && !external {
         ref_element(w, "label", "jr:itext(itextId)")?;
     } else {
         ref_element(w, "label", "label")?;

@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms" xmlns:odk="http://www.opendatakit.org/xforms">
+  <h:head>
+    <h:title>Ext</h:title>
+    <model odk:xforms-version="1.0.0">
+      <instance>
+        <data id="ext">
+          <city/>
+          <tags/>
+          <meta>
+            <instanceID/>
+          </meta>
+        </data>
+      </instance>
+      <instance id="cities" src="jr://file-csv/cities.csv"/>
+      <instance id="tags" src="jr://file/tags.xml"/>
+      <bind nodeset="/data/city" type="string"/>
+      <bind nodeset="/data/tags" type="string"/>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" jr:preload="uid"/>
+    </model>
+  </h:head>
+  <h:body>
+    <select1 ref="/data/city">
+      <label>City</label>
+      <itemset nodeset="instance('cities')/root/item">
+        <value ref="name"/>
+        <label ref="label"/>
+      </itemset>
+    </select1>
+    <select ref="/data/tags">
+      <label>Tags</label>
+      <itemset nodeset="instance('tags')/root/item">
+        <value ref="name"/>
+        <label ref="label"/>
+      </itemset>
+    </select>
+  </h:body>
+</h:html>

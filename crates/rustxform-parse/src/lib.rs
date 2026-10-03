@@ -248,14 +248,28 @@ fn parse_kind(token: &str) -> Kind {
         "select_one" => Kind::Select {
             multiple: false,
             list: parts.next().unwrap_or_default().to_owned(),
+            file: None,
         },
         "select_multiple" => Kind::Select {
             multiple: true,
             list: parts.next().unwrap_or_default().to_owned(),
+            file: None,
         },
+        "select_one_from_file" => select_from_file(false, parts.next().unwrap_or_default()),
+        "select_multiple_from_file" => select_from_file(true, parts.next().unwrap_or_default()),
         other => {
             resolve_builtin(other).map_or_else(|| Kind::Unknown(other.to_owned()), Kind::Builtin)
         }
+    }
+}
+
+/// Build an external-file select whose instance id is the file's stem.
+fn select_from_file(multiple: bool, file: &str) -> Kind {
+    let stem = file.rsplit_once('.').map_or(file, |(name, _)| name);
+    Kind::Select {
+        multiple,
+        list: stem.to_owned(),
+        file: Some(file.to_owned()),
     }
 }
 
