@@ -532,9 +532,9 @@ fn write_action(w: &mut W, q: &Question, reference: &str) -> Result<(), XformErr
     let Some(action) = b.action else {
         return Ok(());
     };
-    let mut element = BytesStart::new(action);
+    let mut element = BytesStart::new(action.element);
     element.push_attribute(("ref", reference));
-    element.push_attribute(("event", "odk-instance-load"));
+    element.push_attribute(("event", action.event));
     if let Some(quality) = q.parameter("quality") {
         element.push_attribute(("odk:quality", quality));
     }

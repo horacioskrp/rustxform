@@ -138,8 +138,17 @@ pub struct Builtin {
     pub readonly: bool,
     /// Metadata preload, if this type is a preload.
     pub preload: Option<Preload>,
-    /// A model-level action element this type emits (e.g. `odk:recordaudio`).
-    pub action: Option<&'static str>,
+    /// A model-level action this type emits (e.g. `odk:recordaudio`).
+    pub action: Option<Action>,
+}
+
+/// A model-level action element bound to a question.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Action {
+    /// Element name, e.g. `odk:recordaudio` or `odk:setgeopoint`.
+    pub element: &'static str,
+    /// The `event` attribute, e.g. `odk-instance-load`.
+    pub event: &'static str,
 }
 
 /// A single survey question from the `survey` sheet.
@@ -344,7 +353,20 @@ pub fn resolve_builtin(kind: &str) -> Option<Builtin> {
             bind_type: "binary",
             readonly: false,
             preload: None,
-            action: Some("odk:recordaudio"),
+            action: Some(Action {
+                element: "odk:recordaudio",
+                event: "odk-instance-load",
+            }),
+        },
+        "start-geopoint" => Builtin {
+            control: None,
+            bind_type: "geopoint",
+            readonly: false,
+            preload: None,
+            action: Some(Action {
+                element: "odk:setgeopoint",
+                event: "odk-instance-first-load",
+            }),
         },
         _ => return None,
     })
