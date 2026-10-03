@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms" xmlns:odk="http://www.opendatakit.org/xforms">
+  <h:head>
+    <h:title>LastSaved</h:title>
+    <model odk:xforms-version="1.0.0">
+      <instance>
+        <data id="lastsaved">
+          <count/>
+          <prev/>
+          <meta>
+            <instanceID/>
+          </meta>
+        </data>
+      </instance>
+      <instance id="__last-saved" src="jr://instance/last-saved"/>
+      <bind nodeset="/data/count" type="int"/>
+      <bind nodeset="/data/prev" type="int" calculate=" instance('__last-saved')/data/count "/>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" jr:preload="uid"/>
+    </model>
+  </h:head>
+  <h:body>
+    <input ref="/data/count">
+      <label>Count</label>
+    </input>
+    <input ref="/data/prev">
+      <label>Previous</label>
+    </input>
+  </h:body>
+</h:html>

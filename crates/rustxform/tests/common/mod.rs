@@ -39,7 +39,14 @@ fn sort_attributes(start: &BytesStart<'_>) -> BytesStart<'static> {
     let mut attrs: Vec<_> = start.attributes().filter_map(Result::ok).collect();
     attrs.sort_by(|a, b| a.key.as_ref().cmp(b.key.as_ref()));
     for attr in attrs {
-        out.push_attribute(attr);
+        // Decode then re-encode so escaping is normalized (e.g. `'` vs `&apos;`,
+        // `>` vs `&gt;`): equivalent values compare equal regardless of source.
+        let key = String::from_utf8_lossy(attr.key.as_ref()).into_owned();
+        let value = attr
+            .unescape_value()
+            .map(|v| v.into_owned())
+            .unwrap_or_default();
+        out.push_attribute((key.as_str(), value.as_str()));
     }
     out
 }

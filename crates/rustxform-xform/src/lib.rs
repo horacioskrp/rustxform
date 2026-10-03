@@ -64,6 +64,12 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
     }
     write_primary_instance(&mut w, survey, form_id)?;
     write_choice_instances(&mut w, survey, multilingual)?;
+    if uses_last_saved(&survey.children) {
+        let mut instance = BytesStart::new("instance");
+        instance.push_attribute(("id", "__last-saved"));
+        instance.push_attribute(("src", "jr://instance/last-saved"));
+        w.write_event(Event::Empty(instance))?;
+    }
     let index = build_index(&survey.children);
     write_binds(&mut w, &survey.children, &format!("/{ROOT}"), &index)?;
     write_meta_binds(&mut w, survey)?;
@@ -417,11 +423,7 @@ fn write_bind(
 ) -> Result<(), XformError> {
     let empty: Vec<Step> = Vec::new();
     let context = index.get(&question.name).unwrap_or(&empty);
-    let resolve = |name: &str| {
-        index
-            .get(name)
-            .map(|target| reference_xpath(context, target))
-    };
+    let resolve = |name: &str| resolve_ref(index, context, name);
 
     let mut bind = BytesStart::new("bind");
     bind.push_attribute(("nodeset", nodeset));
@@ -842,15 +844,53 @@ fn write_output_label(
     Ok(())
 }
 
-/// Resolve `${target}` referenced from `context` to its XForm XPath.
+/// Resolve `${target}` referenced from the question named `context`.
 fn resolve_reference(
     index: &HashMap<String, Vec<Step>>,
     context: &str,
     target: &str,
 ) -> Option<String> {
-    let context = index.get(context)?;
-    let target = index.get(target)?;
+    let empty: Vec<Step> = Vec::new();
+    let context = index.get(context).unwrap_or(&empty);
+    resolve_ref(index, context, target)
+}
+
+/// Resolve a `${name}` reference (including `last-saved#name`) to its XPath.
+fn resolve_ref(index: &HashMap<String, Vec<Step>>, context: &[Step], name: &str) -> Option<String> {
+    if let Some(rest) = name.strip_prefix("last-saved#") {
+        let target = index.get(rest)?;
+        // Absolute path into the last-saved secondary instance.
+        return Some(format!(
+            "instance('__last-saved'){}",
+            reference_xpath(&[], target)
+        ));
+    }
+    let target = index.get(name)?;
     Some(reference_xpath(context, target))
+}
+
+/// Does any expression reference `last-saved#…`?
+fn uses_last_saved(nodes: &[Node]) -> bool {
+    nodes.iter().any(|node| match node {
+        Node::Question(q) => {
+            [
+                &q.relevant,
+                &q.constraint,
+                &q.required,
+                &q.readonly,
+                &q.calculation,
+            ]
+            .into_iter()
+            .flatten()
+            .flat_map(|e| rustxform_expr::reference_names(e))
+            .any(|r| r.starts_with("last-saved#"))
+                || q.label
+                    .single()
+                    .map(|t| t.contains("${last-saved#"))
+                    .unwrap_or(false)
+        }
+        Node::Group(c) | Node::Repeat(c) => uses_last_saved(&c.children),
+    })
 }
 
 /// Write a control's `<hint>` when present.
