@@ -4,10 +4,11 @@ A fast, dependency-light **Rust** library and CLI that compiles an **XLSForm**
 (a spreadsheet-based form definition) into an **XForm** — the XML form format
 consumed by mobile and web data-collection tools.
 
-> **Status:** 🟢 v1 feature-complete. Reads Markdown, CSV and XLSX/XLS and
-> compiles question types, choices, groups, repeats, `${…}` logic,
-> multilingual `itext` and validations — each verified against golden output
-> (see [ROADMAP.md](ROADMAP.md)). Some advanced columns remain (roadmap).
+> **Status:** 🟢 **v0.1.0 released.** Reads Markdown, CSV and XLSX/XLS and
+> compiles question types, selects, groups, repeats, `${…}` logic, multilingual
+> `itext`, media, metadata/actions, Entities and validations — verified
+> byte-identical to the reference compiler on a 53-form golden corpus (see
+> [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md)).
 
 ## Why
 
