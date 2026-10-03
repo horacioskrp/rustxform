@@ -9,7 +9,9 @@ use std::collections::HashMap;
 
 use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
-use rustxform_core::{Container, Control, Kind, Localized, Media, Node, Question, Survey};
+use rustxform_core::{
+    Container, Control, Kind, Localized, Media, Node, Question, SelectType, Survey,
+};
 use rustxform_expr::rewrite_references;
 
 /// Name of the primary instance root element.
@@ -497,7 +499,15 @@ fn write_bind(
                 push_logic_attributes(&mut bind, question, &resolve, b.readonly, nodeset, ml);
             }
         }
-        Kind::Select { .. } | Kind::Unknown(_) => {
+        Kind::Select { select, .. } => {
+            let bind_type = match select {
+                SelectType::Rank => "odk:rank",
+                _ => "string",
+            };
+            bind.push_attribute(("type", bind_type));
+            push_logic_attributes(&mut bind, question, &resolve, false, nodeset, ml);
+        }
+        Kind::Unknown(_) => {
             bind.push_attribute(("type", "string"));
             push_logic_attributes(&mut bind, question, &resolve, false, nodeset, ml);
         }
@@ -848,17 +858,16 @@ fn write_select(
     ml: bool,
     index: &HashMap<String, Vec<Step>>,
 ) -> Result<(), XformError> {
-    let Kind::Select {
-        multiple,
-        list,
-        file,
-    } = &question.kind
-    else {
+    let Kind::Select { select, list, file } = &question.kind else {
         return Ok(());
     };
     let external = file.is_some();
 
-    let tag = if *multiple { "select" } else { "select1" };
+    let tag = match select {
+        SelectType::One => "select1",
+        SelectType::Multiple => "select",
+        SelectType::Rank => "odk:rank",
+    };
     let mut element = BytesStart::new(tag);
     element.push_attribute(("ref", reference));
     if let Some(appearance) = &question.appearance {

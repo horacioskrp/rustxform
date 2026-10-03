@@ -68,10 +68,10 @@ impl Localized {
 pub enum Kind {
     /// A built-in type with a fixed XForm mapping.
     Builtin(Builtin),
-    /// A `select_one` / `select_multiple` referencing a choice list or file.
+    /// A `select_one` / `select_multiple` / `rank` over a choice list or file.
     Select {
-        /// `true` for `select_multiple`, `false` for `select_one`.
-        multiple: bool,
+        /// Which selection control this is.
+        select: SelectType,
         /// The instance id: a choice-list name, or an external file's stem.
         list: String,
         /// External source filename for `select_*_from_file`; `None` inline.
@@ -79,6 +79,17 @@ pub enum Kind {
     },
     /// A type token not yet supported; emitted as a plain string bind.
     Unknown(String),
+}
+
+/// Which selection control a [`Kind::Select`] renders as.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectType {
+    /// `select_one` → `<select1>`.
+    One,
+    /// `select_multiple` → `<select>`.
+    Multiple,
+    /// `rank` → `<odk:rank>`.
+    Rank,
 }
 
 /// The XForm body control a built-in question renders as.

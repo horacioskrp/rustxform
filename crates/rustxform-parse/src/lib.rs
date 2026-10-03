@@ -5,8 +5,8 @@
 //! (with `::Lang` qualifiers) and collects the form's languages.
 
 use rustxform_core::{
-    Choice, ChoiceList, Container, Entity, Kind, Localized, Media, Node, Question, Settings,
-    Survey, resolve_builtin,
+    Choice, ChoiceList, Container, Entity, Kind, Localized, Media, Node, Question, SelectType,
+    Settings, Survey, resolve_builtin,
 };
 use rustxform_reader::{Sheet, Workbook};
 
@@ -323,19 +323,21 @@ fn parse_kind(token: &str) -> Kind {
     let mut parts = token.split_whitespace();
     let head = parts.next().unwrap_or_default();
 
+    let inline = |select, list: &str| Kind::Select {
+        select,
+        list: list.to_owned(),
+        file: None,
+    };
     match head {
-        "select_one" => Kind::Select {
-            multiple: false,
-            list: parts.next().unwrap_or_default().to_owned(),
-            file: None,
-        },
-        "select_multiple" => Kind::Select {
-            multiple: true,
-            list: parts.next().unwrap_or_default().to_owned(),
-            file: None,
-        },
-        "select_one_from_file" => select_from_file(false, parts.next().unwrap_or_default()),
-        "select_multiple_from_file" => select_from_file(true, parts.next().unwrap_or_default()),
+        "select_one" => inline(SelectType::One, parts.next().unwrap_or_default()),
+        "select_multiple" => inline(SelectType::Multiple, parts.next().unwrap_or_default()),
+        "rank" => inline(SelectType::Rank, parts.next().unwrap_or_default()),
+        "select_one_from_file" => {
+            select_from_file(SelectType::One, parts.next().unwrap_or_default())
+        }
+        "select_multiple_from_file" => {
+            select_from_file(SelectType::Multiple, parts.next().unwrap_or_default())
+        }
         other => {
             resolve_builtin(other).map_or_else(|| Kind::Unknown(other.to_owned()), Kind::Builtin)
         }
@@ -343,10 +345,10 @@ fn parse_kind(token: &str) -> Kind {
 }
 
 /// Build an external-file select whose instance id is the file's stem.
-fn select_from_file(multiple: bool, file: &str) -> Kind {
+fn select_from_file(select: SelectType, file: &str) -> Kind {
     let stem = file.rsplit_once('.').map_or(file, |(name, _)| name);
     Kind::Select {
-        multiple,
+        select,
         list: stem.to_owned(),
         file: Some(file.to_owned()),
     }

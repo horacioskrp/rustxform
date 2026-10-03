@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
-use rustxform_core::{Kind, Localized, Node, Question, Survey, resolve_builtin};
+use rustxform_core::{Kind, Localized, Node, Question, SelectType, Survey, resolve_builtin};
 
 /// An error produced while parsing an XForm.
 #[derive(Debug, thiserror::Error)]
@@ -21,7 +21,9 @@ pub enum Xform2JsonError {
 }
 
 /// Body control element names handled by the reverse parser.
-const CONTROLS: &[&str] = &["input", "select1", "select", "trigger", "upload", "range"];
+const CONTROLS: &[&str] = &[
+    "input", "select1", "select", "rank", "trigger", "upload", "range",
+];
 
 /// Parse an XForm document into a [`Survey`].
 ///
@@ -191,18 +193,19 @@ fn to_question(p: Partial, binds: &HashMap<String, String>) -> Question {
 
 /// Infer a [`Kind`] from a control tag, bind type and (for selects) list.
 fn infer_kind(tag: &str, bind_type: &str, list: Option<String>, mediatype: Option<&str>) -> Kind {
-    match tag {
-        "select1" => Kind::Select {
-            multiple: false,
+    let select = match tag {
+        "select1" => Some(SelectType::One),
+        "select" => Some(SelectType::Multiple),
+        "rank" => Some(SelectType::Rank),
+        _ => None,
+    };
+    match select {
+        Some(select) => Kind::Select {
+            select,
             list: list.unwrap_or_default(),
             file: None,
         },
-        "select" => Kind::Select {
-            multiple: true,
-            list: list.unwrap_or_default(),
-            file: None,
-        },
-        _ => {
+        None => {
             let token = builtin_token(tag, bind_type, mediatype);
             resolve_builtin(&token).map_or(Kind::Unknown(token.clone()), Kind::Builtin)
         }
@@ -323,7 +326,7 @@ mod tests {
         assert_eq!(
             q.kind,
             Kind::Select {
-                multiple: false,
+                select: SelectType::One,
                 list: "cities".to_owned(),
                 file: None,
             }

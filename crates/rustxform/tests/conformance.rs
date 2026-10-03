@@ -72,6 +72,7 @@ golden!(conformance_multilingual_messages_form, "mlmsg");
 golden!(conformance_cascading_select_form, "cascade");
 golden!(conformance_multilingual_media_form, "mmedia");
 golden!(conformance_entities_form, "entity");
+golden!(conformance_rank_form, "rank");
 
 #[test]
 fn xlsx_reader_matches_markdown_golden() {
