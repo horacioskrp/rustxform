@@ -188,6 +188,7 @@ fn to_question(p: Partial, binds: &HashMap<String, String>) -> Question {
         default: None,
         choice_filter: None,
         save_to: None,
+        trigger: None,
     }
 }
 

@@ -110,9 +110,9 @@ legitimate cascade columns).
 Each item lands with a golden fixture (oracle-generated, byte-identical after
 C14N) before it is checked off.
 
-- [ ] `hidden` type (string bind, no body control)
-- [ ] `trigger` + `calculation` → `odk:setvalue` dynamic defaults / recalculation
-      (`event="xforms-value-changed"` / `odk-instance-first-load`)
+- [x] `hidden` type (string bind, no body control)
+- [x] `trigger` + `calculation` → `odk:setvalue` dynamic recalculation
+      (`event="xforms-value-changed"`, injected into the trigger node's control)
 - [ ] `or_other` on `select_one` / `select_multiple` (synthetic "other" choice +
       linked text question + bind)
 - [ ] Encrypted forms: `public_key` → `<submission base64RsaPublicKey=…>`

@@ -276,6 +276,7 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
     let default_col = column("default");
     let filter_col = column("choice_filter");
     let saveto_col = column("save_to");
+    let trigger_col = column("trigger");
     let count_col = column("repeat_count");
     let label_cols = loc_columns(header, "label");
     let hint_cols = loc_columns(header, "hint");
@@ -330,6 +331,7 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
                     default: optional(cell(default_col)),
                     choice_filter: optional(cell(filter_col)),
                     save_to: optional(cell(saveto_col)),
+                    trigger: optional(cell(trigger_col)),
                 };
                 if type_token.trim() == "phone number" {
                     if question.constraint.is_none() {

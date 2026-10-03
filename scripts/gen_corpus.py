@@ -148,6 +148,9 @@ FORMS = {
         ["background-audio", "ba", "", "quality=low"], ["start-geopoint", "sg", "", ""], ["text", "q", "Q", ""]], "settings": S},
     "c_audit": {"survey": [["type", "name", "label"], ["audit", "audit", ""], ["text", "q", "Q"]], "settings": S},
     "c_hidden": {"survey": [["type", "name", "label"], ["hidden", "h", ""], ["text", "q", "Q"]], "settings": S},
+    "c_setvalue": {"survey": [["type", "name", "label", "calculation", "trigger"],
+        ["integer", "a", "A", "", ""],
+        ["integer", "b", "B", D + "{a} * 2", D + "{a}"]], "settings": S},
 }
 
 

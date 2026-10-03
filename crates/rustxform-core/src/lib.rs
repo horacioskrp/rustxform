@@ -193,6 +193,9 @@ pub struct Question {
     pub choice_filter: Option<String>,
     /// `save_to` column: the entity property this answer populates, if any.
     pub save_to: Option<String>,
+    /// `trigger` column: names a node whose change drives this question's
+    /// `calculation` via an `odk:setvalue` action instead of a calculate bind.
+    pub trigger: Option<String>,
 }
 
 impl Question {

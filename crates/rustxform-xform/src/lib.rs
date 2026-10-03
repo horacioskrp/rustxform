@@ -88,6 +88,7 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
         w.write_event(Event::Empty(instance))?;
     }
     let index = build_index(&survey.children);
+    let setvalues = collect_setvalues(&survey.children, &index);
     write_binds(
         &mut w,
         &survey.children,
@@ -108,14 +109,13 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
         body.push_attribute(("class", style.as_str()));
     }
     w.write_event(Event::Start(body))?;
-    write_body(
-        &mut w,
-        &survey.children,
-        &format!("/{ROOT}"),
-        multilingual,
-        &index,
-        &survey.osm_tags,
-    )?;
+    let ctx = BodyCtx {
+        ml: multilingual,
+        index: &index,
+        osm: &survey.osm_tags,
+        setvalues: &setvalues,
+    };
+    write_body(&mut w, &survey.children, &format!("/{ROOT}"), &ctx)?;
     close(&mut w, "h:body")?;
 
     close(&mut w, "h:html")?;
@@ -648,7 +648,11 @@ fn push_logic_attributes(
     }
     push_message(bind, "jr:constraintMsg", &q.constraint_message, nodeset, ml);
     if let Some(expr) = &q.calculation {
-        bind.push_attribute(("calculate", rewrite_references(expr, resolve).as_str()));
+        // With a `trigger`, the calculation becomes an `odk:setvalue` action on
+        // the triggering node's control, not a calculate bind here.
+        if q.trigger.is_none() {
+            bind.push_attribute(("calculate", rewrite_references(expr, resolve).as_str()));
+        }
     }
 }
 
@@ -787,28 +791,99 @@ fn reference_xpath(context: &[Step], target: &[Step]) -> String {
     }
 }
 
-// --- Body -------------------------------------------------------------------
+// --- setvalue actions (trigger column) --------------------------------------
 
-/// Emit body controls for `nodes` under `parent`.
-fn write_body(
-    w: &mut W,
+/// A `setvalue` action injected into a trigger node's body control.
+struct SetValue {
+    /// Target node the action writes to (absolute XPath).
+    reference: String,
+    /// Expression evaluated when the trigger node changes.
+    value: String,
+}
+
+/// Map each trigger node name to the `setvalue` actions fired on its change.
+///
+/// A question with both a `trigger` and a `calculation` recalculates via an
+/// `odk:setvalue` on the triggering node, instead of a calculate bind.
+fn collect_setvalues(
     nodes: &[Node],
-    parent: &str,
-    ml: bool,
     index: &HashMap<String, Vec<Step>>,
-    osm: &[ChoiceList],
-) -> Result<(), XformError> {
+) -> HashMap<String, Vec<SetValue>> {
+    let mut map: HashMap<String, Vec<SetValue>> = HashMap::new();
+    gather_setvalues(nodes, index, &mut map);
+    map
+}
+
+fn gather_setvalues(
+    nodes: &[Node],
+    index: &HashMap<String, Vec<Step>>,
+    map: &mut HashMap<String, Vec<SetValue>>,
+) {
     for node in nodes {
         match node {
             Node::Question(q) => {
-                write_control(w, q, &format!("{parent}/{}", q.name), ml, index, osm)?;
+                let (Some(trigger), Some(calc)) = (&q.trigger, &q.calculation) else {
+                    continue;
+                };
+                let empty: Vec<Step> = Vec::new();
+                let context = index.get(&q.name).unwrap_or(&empty);
+                let value =
+                    rewrite_references(calc, |name: &str| resolve_ref(index, context, name));
+                let Some(reference) = resolve_ref(index, &[], &q.name) else {
+                    continue;
+                };
+                for target in rustxform_expr::reference_names(trigger) {
+                    map.entry(target).or_default().push(SetValue {
+                        reference: reference.clone(),
+                        value: value.clone(),
+                    });
+                }
             }
-            Node::Group(g) => {
-                write_group(w, g, &format!("{parent}/{}", g.name), false, ml, index, osm)?;
-            }
-            Node::Repeat(r) => {
-                write_group(w, r, &format!("{parent}/{}", r.name), true, ml, index, osm)?;
-            }
+            Node::Group(c) | Node::Repeat(c) => gather_setvalues(&c.children, index, map),
+        }
+    }
+}
+
+/// Emit the `setvalue` actions registered for the node named `name`.
+fn write_setvalues(
+    w: &mut W,
+    name: &str,
+    setvalues: &HashMap<String, Vec<SetValue>>,
+) -> Result<(), XformError> {
+    let Some(list) = setvalues.get(name) else {
+        return Ok(());
+    };
+    for sv in list {
+        let mut element = BytesStart::new("setvalue");
+        element.push_attribute(("ref", sv.reference.as_str()));
+        element.push_attribute(("event", "xforms-value-changed"));
+        element.push_attribute(("value", sv.value.as_str()));
+        w.write_event(Event::Empty(element))?;
+    }
+    Ok(())
+}
+
+// --- Body -------------------------------------------------------------------
+
+/// Shared read-only context threaded through body emission.
+struct BodyCtx<'a> {
+    /// Whether the form is multilingual (labels/hints via itext).
+    ml: bool,
+    /// Node name → path index, for reference and nodeset resolution.
+    index: &'a HashMap<String, Vec<Step>>,
+    /// OSM tag lists, consumed by `osm` upload controls.
+    osm: &'a [ChoiceList],
+    /// `setvalue` actions keyed by the trigger node they attach to.
+    setvalues: &'a HashMap<String, Vec<SetValue>>,
+}
+
+/// Emit body controls for `nodes` under `parent`.
+fn write_body(w: &mut W, nodes: &[Node], parent: &str, ctx: &BodyCtx) -> Result<(), XformError> {
+    for node in nodes {
+        match node {
+            Node::Question(q) => write_control(w, q, &format!("{parent}/{}", q.name), ctx)?,
+            Node::Group(g) => write_group(w, g, &format!("{parent}/{}", g.name), false, ctx)?,
+            Node::Repeat(r) => write_group(w, r, &format!("{parent}/{}", r.name), true, ctx)?,
         }
     }
     Ok(())
@@ -820,9 +895,7 @@ fn write_group(
     c: &Container,
     path: &str,
     repeat: bool,
-    ml: bool,
-    index: &HashMap<String, Vec<Step>>,
-    osm: &[ChoiceList],
+    ctx: &BodyCtx,
 ) -> Result<(), XformError> {
     let mut group = BytesStart::new("group");
     group.push_attribute(("ref", path));
@@ -841,10 +914,10 @@ fn write_group(
             r.push_attribute(("jr:count", format!(" {path}_count ").as_str()));
         }
         w.write_event(Event::Start(r))?;
-        write_body(w, &c.children, path, ml, index, osm)?;
+        write_body(w, &c.children, path, ctx)?;
         close(w, "repeat")?;
     } else {
-        write_body(w, &c.children, path, ml, index, osm)?;
+        write_body(w, &c.children, path, ctx)?;
     }
 
     close(w, "group")?;
@@ -856,28 +929,25 @@ fn write_control(
     w: &mut W,
     question: &Question,
     reference: &str,
-    ml: bool,
-    index: &HashMap<String, Vec<Step>>,
-    osm: &[ChoiceList],
+    ctx: &BodyCtx,
 ) -> Result<(), XformError> {
     match &question.kind {
         Kind::Builtin(b) => match b.control {
             None => Ok(()),
-            Some(Control::Input) => control(w, "input", reference, question, ml, index, &[]),
-            Some(Control::Trigger) => control(w, "trigger", reference, question, ml, index, &[]),
+            Some(Control::Input) => control(w, "input", reference, question, &[], ctx),
+            Some(Control::Trigger) => control(w, "trigger", reference, question, &[], ctx),
             Some(Control::Upload { mediatype }) => control(
                 w,
                 "upload",
                 reference,
                 question,
-                ml,
-                index,
                 &[("mediatype", mediatype)],
+                ctx,
             ),
-            Some(Control::Range) => write_range(w, reference, question, ml, index),
+            Some(Control::Range) => write_range(w, reference, question, ctx),
         },
-        Kind::Select { .. } => write_select(w, reference, question, ml, index),
-        Kind::Osm { tagset } => write_osm(w, reference, question, ml, index, tagset, osm),
+        Kind::Select { .. } => write_select(w, reference, question, ctx),
+        Kind::Osm { tagset } => write_osm(w, reference, question, tagset, ctx),
         Kind::Unknown(_) => Ok(()),
     }
 }
@@ -887,10 +957,8 @@ fn write_osm(
     w: &mut W,
     reference: &str,
     question: &Question,
-    ml: bool,
-    index: &HashMap<String, Vec<Step>>,
     tagset: &str,
-    osm: &[ChoiceList],
+    ctx: &BodyCtx,
 ) -> Result<(), XformError> {
     let mut element = BytesStart::new("upload");
     element.push_attribute(("ref", reference));
@@ -899,10 +967,11 @@ fn write_osm(
     }
     element.push_attribute(("mediatype", "osm/*"));
     w.write_event(Event::Start(element))?;
-    write_label(w, question, reference, ml, index)?;
-    write_hint(w, question, reference, ml)?;
+    write_label(w, question, reference, ctx.ml, ctx.index)?;
+    write_hint(w, question, reference, ctx.ml)?;
+    write_setvalues(w, &question.name, ctx.setvalues)?;
 
-    if let Some(tags) = osm.iter().find(|t| t.name == tagset) {
+    if let Some(tags) = ctx.osm.iter().find(|t| t.name == tagset) {
         for tag in &tags.items {
             let mut element = BytesStart::new("tag");
             element.push_attribute(("key", tag.name.as_str()));
@@ -923,9 +992,8 @@ fn control(
     tag: &str,
     reference: &str,
     question: &Question,
-    ml: bool,
-    index: &HashMap<String, Vec<Step>>,
     extra: &[(&str, &str)],
+    ctx: &BodyCtx,
 ) -> Result<(), XformError> {
     let mut element = BytesStart::new(tag);
     element.push_attribute(("ref", reference));
@@ -936,8 +1004,9 @@ fn control(
         element.push_attribute(*attr);
     }
     w.write_event(Event::Start(element))?;
-    write_label(w, question, reference, ml, index)?;
-    write_hint(w, question, reference, ml)?;
+    write_label(w, question, reference, ctx.ml, ctx.index)?;
+    write_hint(w, question, reference, ctx.ml)?;
+    write_setvalues(w, &question.name, ctx.setvalues)?;
     close(w, tag)?;
     Ok(())
 }
@@ -947,8 +1016,7 @@ fn write_range(
     w: &mut W,
     reference: &str,
     question: &Question,
-    ml: bool,
-    index: &HashMap<String, Vec<Step>>,
+    ctx: &BodyCtx,
 ) -> Result<(), XformError> {
     let mut element = BytesStart::new("range");
     element.push_attribute(("ref", reference));
@@ -960,8 +1028,9 @@ fn write_range(
         element.push_attribute((key, question.parameter(key).unwrap_or(default)));
     }
     w.write_event(Event::Start(element))?;
-    write_label(w, question, reference, ml, index)?;
-    write_hint(w, question, reference, ml)?;
+    write_label(w, question, reference, ctx.ml, ctx.index)?;
+    write_hint(w, question, reference, ctx.ml)?;
+    write_setvalues(w, &question.name, ctx.setvalues)?;
     close(w, "range")?;
     Ok(())
 }
@@ -971,8 +1040,7 @@ fn write_select(
     w: &mut W,
     reference: &str,
     question: &Question,
-    ml: bool,
-    index: &HashMap<String, Vec<Step>>,
+    ctx: &BodyCtx,
 ) -> Result<(), XformError> {
     let Kind::Select { select, list, file } = &question.kind else {
         return Ok(());
@@ -990,8 +1058,9 @@ fn write_select(
         element.push_attribute(("appearance", appearance.as_str()));
     }
     w.write_event(Event::Start(element))?;
-    write_label(w, question, reference, ml, index)?;
-    write_hint(w, question, reference, ml)?;
+    write_label(w, question, reference, ctx.ml, ctx.index)?;
+    write_hint(w, question, reference, ctx.ml)?;
+    write_setvalues(w, &question.name, ctx.setvalues)?;
 
     // A `choice_filter` adds an XPath predicate to the itemset nodeset.
     let predicate = question
@@ -999,8 +1068,8 @@ fn write_select(
         .as_ref()
         .map(|filter| {
             let empty: Vec<Step> = Vec::new();
-            let context = index.get(&question.name).unwrap_or(&empty);
-            let resolve = |name: &str| resolve_ref(index, context, name);
+            let context = ctx.index.get(&question.name).unwrap_or(&empty);
+            let resolve = |name: &str| resolve_ref(ctx.index, context, name);
             format!("[{}]", rewrite_references(filter, resolve))
         })
         .unwrap_or_default();
@@ -1012,7 +1081,7 @@ fn write_select(
     );
     w.write_event(Event::Start(itemset))?;
     ref_element(w, "value", "name")?;
-    if ml && !external {
+    if ctx.ml && !external {
         ref_element(w, "label", "jr:itext(itextId)")?;
     } else {
         ref_element(w, "label", "label")?;
