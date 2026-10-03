@@ -8,15 +8,18 @@
 //! through unchanged, a flat single-language form round-trips byte-identically:
 //! `emit(xform_to_survey(emit(survey))) == emit(survey)`.
 //!
-//! Not yet recovered (questions nested in groups are flattened): group/repeat
-//! structure, `itext` translations, reconstructed choice lists, entities, and
-//! data-only nodes such as `calculate`. Use it to import or inspect an XForm.
+//! The group/repeat tree is reconstructed (including `repeat_count`), so
+//! structured single-language forms round-trip too. Not yet recovered: `itext`
+//! translations, reconstructed choice lists, entities, and data-only nodes such
+//! as `calculate`. Use it to import or inspect an XForm.
 
 use std::collections::HashMap;
 
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
-use rustxform_core::{Kind, Localized, Node, Question, SelectType, Survey, resolve_builtin};
+use rustxform_core::{
+    Container, Kind, Localized, Node, Question, SelectType, Survey, resolve_builtin,
+};
 
 /// An error produced while parsing an XForm.
 #[derive(Debug, thiserror::Error)]
@@ -39,12 +42,12 @@ const CONTROLS: &[&str] = &[
 pub fn xform_to_survey(xml: &str) -> Result<Survey, Xform2JsonError> {
     let binds = collect_binds(xml)?;
     let (title, form_id) = collect_metadata(xml)?;
-    let questions = collect_questions(xml, &binds)?;
+    let children = collect_body_nodes(xml, &binds)?;
 
     let mut survey = Survey::default();
     survey.settings.title = title;
     survey.settings.form_id = form_id;
-    survey.children = questions.into_iter().map(Node::Question).collect();
+    survey.children = children;
     Ok(survey)
 }
 
@@ -133,26 +136,46 @@ struct Partial {
     hint: Option<String>,
 }
 
-/// Walk the body controls into a flat list of questions.
-fn collect_questions(
+/// A group/repeat being assembled on the parse stack.
+struct Frame {
+    name: String,
+    label: Option<String>,
+    appearance: Option<String>,
+    is_repeat: bool,
+    count: Option<String>,
+    children: Vec<Node>,
+}
+
+/// Walk the body into a node tree, reconstructing groups and repeats.
+///
+/// The forward emitter wraps a repeat in a `<group>` holding a `<repeat>`, so a
+/// group whose body contains a `<repeat>` becomes a [`Node::Repeat`].
+fn collect_body_nodes(
     xml: &str,
     binds: &HashMap<String, Bind>,
-) -> Result<Vec<Question>, Xform2JsonError> {
+) -> Result<Vec<Node>, Xform2JsonError> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
 
-    let mut questions = Vec::new();
+    let mut root: Vec<Node> = Vec::new();
+    let mut stack: Vec<Frame> = Vec::new();
     let mut current: Option<Partial> = None;
     let mut in_label = false;
+    let mut in_group_label = false;
     let mut in_hint = false;
     let mut in_itemset = false;
+    let mut in_body = false;
 
     loop {
         match read(&mut reader)? {
             Event::Eof => break,
             Event::Start(e) | Event::Empty(e) => {
                 let name = local_name(e.name().as_ref());
-                if CONTROLS.contains(&name.as_str()) {
+                if name == "body" {
+                    in_body = true;
+                } else if !in_body {
+                    continue;
+                } else if CONTROLS.contains(&name.as_str()) {
                     current = Some(Partial {
                         tag: name,
                         reference: attr(&e, "ref").unwrap_or_default(),
@@ -162,13 +185,36 @@ fn collect_questions(
                         label: None,
                         hint: None,
                     });
+                } else if name == "group" {
+                    stack.push(Frame {
+                        name: last_segment(attr(&e, "ref").as_deref().unwrap_or_default()),
+                        label: None,
+                        appearance: attr(&e, "appearance"),
+                        is_repeat: false,
+                        count: None,
+                        children: Vec::new(),
+                    });
+                } else if name == "repeat" {
+                    if let Some(top) = stack.last_mut() {
+                        top.is_repeat = true;
+                        if attr(&e, "count").is_some() {
+                            let nodeset = attr(&e, "nodeset").unwrap_or_default();
+                            top.count = binds
+                                .get(&format!("{nodeset}_count"))
+                                .and_then(|b| b.calculate.clone());
+                        }
+                    }
                 } else if name == "itemset" {
                     in_itemset = true;
                     if let Some(p) = current.as_mut() {
                         p.list = attr(&e, "nodeset").and_then(|n| instance_id(&n));
                     }
-                } else if name == "label" && current.is_some() && !in_itemset {
-                    in_label = true;
+                } else if name == "label" {
+                    if current.is_some() && !in_itemset {
+                        in_label = true;
+                    } else if current.is_none() && !stack.is_empty() {
+                        in_group_label = true;
+                    }
                 } else if name == "hint" && current.is_some() {
                     in_hint = true;
                 }
@@ -178,18 +224,43 @@ fn collect_questions(
                     p.label = Some(t.unescape().map_err(xml_err)?.into_owned());
                 }
             }
+            Event::Text(t) if in_group_label => {
+                if let Some(frame) = stack.last_mut() {
+                    frame.label = Some(t.unescape().map_err(xml_err)?.into_owned());
+                }
+            }
             Event::Text(t) if in_hint => {
                 if let Some(p) = current.as_mut() {
                     p.hint = Some(t.unescape().map_err(xml_err)?.into_owned());
                 }
             }
             Event::End(e) => match local_name(e.name().as_ref()).as_str() {
+                "label" if in_group_label => in_group_label = false,
                 "label" => in_label = false,
                 "hint" => in_hint = false,
                 "itemset" => in_itemset = false,
+                "repeat" => {}
+                "group" => {
+                    if let Some(frame) = stack.pop() {
+                        let is_repeat = frame.is_repeat;
+                        let container = Container {
+                            name: frame.name,
+                            label: frame.label,
+                            appearance: frame.appearance,
+                            count: frame.count,
+                            children: frame.children,
+                        };
+                        let node = if is_repeat {
+                            Node::Repeat(container)
+                        } else {
+                            Node::Group(container)
+                        };
+                        push_node(node, &mut stack, &mut root);
+                    }
+                }
                 name if CONTROLS.contains(&name) => {
                     if let Some(p) = current.take() {
-                        questions.push(to_question(p, binds));
+                        push_node(Node::Question(to_question(p, binds)), &mut stack, &mut root);
                     }
                 }
                 _ => {}
@@ -197,7 +268,20 @@ fn collect_questions(
             _ => {}
         }
     }
-    Ok(questions)
+    Ok(root)
+}
+
+/// Append a finished node to the innermost open frame, or to the root.
+fn push_node(node: Node, stack: &mut [Frame], root: &mut Vec<Node>) {
+    match stack.last_mut() {
+        Some(frame) => frame.children.push(node),
+        None => root.push(node),
+    }
+}
+
+/// The last `/`-separated segment of a nodeset (`/data/g/x` → `x`).
+fn last_segment(reference: &str) -> String {
+    reference.rsplit('/').next().unwrap_or("").to_owned()
 }
 
 /// Build a [`Question`] from an assembled control and the binds.
@@ -398,7 +482,7 @@ mod tests {
     }
 
     #[test]
-    fn round_trips_flat_forms() {
+    fn round_trips_forms() {
         let forms = [
             // Question types with inline labels.
             "| survey |\n|  | type | name | label |\n|  | text | a | A |\n\
@@ -413,6 +497,21 @@ mod tests {
              |  | integer | q | Q | Enter a number | multiline | . > 0 | Must be positive |\n",
             // A note re-emits identically (read-only string input).
             "| survey |\n|  | type | name | label |\n|  | note | n | Read me |\n|  | text | q | Q |\n",
+            // A group with a sibling after it.
+            "| survey |\n|  | type | name | label |\n|  | begin_group | g | G |\n\
+             |  | text | x | X |\n|  | end_group |  |  |\n|  | integer | y | Y |\n",
+            // A group carrying an appearance.
+            "| survey |\n|  | type | name | label | appearance |\n\
+             |  | begin_group | gp | GP | field-list |\n|  | text | z | Z |  |\n\
+             |  | end_group |  |  |  |\n",
+            // A counted repeat (synthesizes the `_count` calculate node).
+            "| survey |\n|  | type | name | label | repeat_count |\n\
+             |  | begin_repeat | rc | RC | 3 |\n|  | text | ri | RI |  |\n\
+             |  | end_repeat |  |  |  |\n",
+            // A repeat wrapping a nested group.
+            "| survey |\n|  | type | name | label |\n|  | begin_repeat | r | R |\n\
+             |  | begin_group | gg | GG |\n|  | text | yy | YY |\n|  | end_group |  |  |\n\
+             |  | end_repeat |  |  |\n",
         ];
         for md in forms {
             let (first, second) = round_trip(md);

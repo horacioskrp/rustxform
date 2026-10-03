@@ -132,11 +132,12 @@ by a round-trip property test.
 - [x] Full binds: `relevant`, `constraint`, `required`, `read_only`,
       `calculate`, constraint/required messages (recovered as literal XPath)
 - [x] Recover inline `label`/`hint` and control `appearance`
+- [x] Reconstruct the group/repeat tree (`<group>`/`<repeat>`, `repeat_count`)
 - [x] Round-trip property test: `emit == emit∘parse∘emit` holds byte-identically
-      on flat single-language forms (types, logic, messages, hint, appearance)
+      on single-language forms (types, logic, messages, hint, appearance, and
+      groups / repeats / counted repeats / nesting)
 - [ ] XPath → `${name}` recovery (cosmetic; round-trip already holds via
       literal pass-through, since the emitter only rewrites `${…}`)
-- [ ] Reconstruct the group/repeat tree (`<group>`/`<repeat>`, `jr:template`)
 - [ ] Reconstruct choice lists from secondary instances + `<itemset>`/`<item>`
 - [ ] Recover data-only nodes (`calculate`, preloads) from the instance + binds
 - [ ] Decode `<itext>` into multilingual `label`/`hint`, `languages`,
