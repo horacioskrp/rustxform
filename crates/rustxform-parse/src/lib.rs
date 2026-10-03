@@ -90,6 +90,8 @@ fn parse_entity(sheet: &Sheet) -> Option<Entity> {
         dataset: dataset.to_owned(),
         label: optional(cell(column("label"))),
         entity_id: optional(cell(column("entity_id"))),
+        create_if: optional(cell(column("create_if"))),
+        update_if: optional(cell(column("update_if"))),
     })
 }
 

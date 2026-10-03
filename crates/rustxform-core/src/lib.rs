@@ -266,6 +266,10 @@ pub struct Entity {
     pub label: Option<String>,
     /// `entity_id` expression: present ⇒ update mode, absent ⇒ create.
     pub entity_id: Option<String>,
+    /// `create_if` condition expression, if any.
+    pub create_if: Option<String>,
+    /// `update_if` condition expression, if any.
+    pub update_if: Option<String>,
 }
 
 /// A parsed XLSForm survey: settings, a node tree and choice lists.

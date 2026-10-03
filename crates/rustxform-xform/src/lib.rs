@@ -578,6 +578,9 @@ fn write_entity_binds(
     if let Some(id_expr) = &entity.entity_id {
         // Update: derive the base/trunk/branch versions from the dataset, and
         // set @id from the entity_id expression (no uuid setvalue).
+        if let Some(cond) = &entity.update_if {
+            calc_bind(w, "@update", &rewrite(cond))?;
+        }
         let id = rewrite(id_expr);
         let item = format!("instance('{}')/root/item[name={id}]", entity.dataset);
         calc_bind(w, "@baseVersion", &format!("{item}/__version"))?;
@@ -586,6 +589,9 @@ fn write_entity_binds(
         calc_bind(w, "@id", &id)?;
     } else {
         // Create: a fresh uuid() for @id.
+        if let Some(cond) = &entity.create_if {
+            calc_bind(w, "@create", &rewrite(cond))?;
+        }
         let mut id_bind = BytesStart::new("bind");
         id_bind.push_attribute(("nodeset", format!("/{ROOT}/meta/entity/@id").as_str()));
         id_bind.push_attribute(("readonly", "true()"));

@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms" xmlns:odk="http://www.opendatakit.org/xforms" xmlns:entities="http://www.opendatakit.org/xforms/entities">
+  <h:head>
+    <h:title>UI</h:title>
+    <model odk:xforms-version="1.0.0" entities:entities-version="2024.1.0">
+      <instance>
+        <data id="ui">
+          <tid/>
+          <c/>
+          <meta>
+            <entity dataset="trees" update="1" baseVersion="" trunkVersion="" branchId="" id="">
+              <label/>
+            </entity>
+            <instanceID/>
+          </meta>
+        </data>
+      </instance>
+      <bind nodeset="/data/tid" type="string"/>
+      <bind nodeset="/data/c" type="int" entities:saveto="circ"/>
+      <bind nodeset="/data/meta/entity/@update" calculate=" /data/c  &gt; 0" readonly="true()" type="string"/>
+      <bind nodeset="/data/meta/entity/@baseVersion" calculate="instance('trees')/root/item[name= /data/tid ]/__version" readonly="true()" type="string"/>
+      <bind nodeset="/data/meta/entity/@trunkVersion" calculate="instance('trees')/root/item[name= /data/tid ]/__trunkVersion" readonly="true()" type="string"/>
+      <bind nodeset="/data/meta/entity/@branchId" calculate="instance('trees')/root/item[name= /data/tid ]/__branchId" readonly="true()" type="string"/>
+      <bind nodeset="/data/meta/entity/@id" readonly="true()" type="string" calculate=" /data/tid "/>
+      <bind nodeset="/data/meta/entity/label" calculate=" /data/c " readonly="true()" type="string"/>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" jr:preload="uid"/>
+    </model>
+  </h:head>
+  <h:body>
+    <input ref="/data/tid">
+      <label>Tid</label>
+    </input>
+    <input ref="/data/c">
+      <label>C</label>
+    </input>
+  </h:body>
+</h:html>

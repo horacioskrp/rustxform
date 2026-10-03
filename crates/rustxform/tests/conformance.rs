@@ -79,6 +79,8 @@ golden!(conformance_audit_form, "audit");
 golden!(conformance_entity_update_form, "eupd");
 golden!(conformance_xml_external_form, "xmlexternal");
 golden!(conformance_osm_form, "osm");
+golden!(conformance_entity_create_if_form, "eci");
+golden!(conformance_entity_update_if_form, "eui");
 
 #[test]
 fn xlsx_reader_matches_markdown_golden() {
