@@ -138,6 +138,8 @@ pub struct Builtin {
     pub readonly: bool,
     /// Metadata preload, if this type is a preload.
     pub preload: Option<Preload>,
+    /// A model-level action element this type emits (e.g. `odk:recordaudio`).
+    pub action: Option<&'static str>,
 }
 
 /// A single survey question from the `survey` sheet.
@@ -284,6 +286,7 @@ pub fn resolve_builtin(kind: &str) -> Option<Builtin> {
         bind_type,
         readonly,
         preload,
+        action: None,
     };
     let input = Some(Control::Input);
     let preload = |preload, params| Some(Preload { preload, params });
@@ -336,6 +339,13 @@ pub fn resolve_builtin(kind: &str) -> Option<Builtin> {
         "email" => b(None, "string", false, preload("property", "email")),
         "simserial" => b(None, "string", false, preload("property", "simserial")),
         "subscriberid" => b(None, "string", false, preload("property", "subscriberid")),
+        "background-audio" => Builtin {
+            control: None,
+            bind_type: "binary",
+            readonly: false,
+            preload: None,
+            action: Some("odk:recordaudio"),
+        },
         _ => return None,
     })
 }

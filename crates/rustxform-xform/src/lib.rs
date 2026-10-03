@@ -453,7 +453,11 @@ fn write_binds(
 ) -> Result<(), XformError> {
     for node in nodes {
         match node {
-            Node::Question(q) => write_bind(w, q, &format!("{parent}/{}", q.name), index, ml)?,
+            Node::Question(q) => {
+                let path = format!("{parent}/{}", q.name);
+                write_bind(w, q, &path, index, ml)?;
+                write_action(w, q, &path)?;
+            }
             Node::Group(c) => {
                 write_binds(w, &c.children, &format!("{parent}/{}", c.name), index, ml)?;
             }
@@ -516,6 +520,25 @@ fn write_bind(
         bind.push_attribute(("entities:saveto", save_to.as_str()));
     }
     w.write_event(Event::Empty(bind))?;
+    Ok(())
+}
+
+/// Emit a model-level action (e.g. `<odk:recordaudio>`) right after a
+/// question's bind, when its type declares one.
+fn write_action(w: &mut W, q: &Question, reference: &str) -> Result<(), XformError> {
+    let Kind::Builtin(b) = &q.kind else {
+        return Ok(());
+    };
+    let Some(action) = b.action else {
+        return Ok(());
+    };
+    let mut element = BytesStart::new(action);
+    element.push_attribute(("ref", reference));
+    element.push_attribute(("event", "odk-instance-load"));
+    if let Some(quality) = q.parameter("quality") {
+        element.push_attribute(("odk:quality", quality));
+    }
+    w.write_event(Event::Empty(element))?;
     Ok(())
 }
 

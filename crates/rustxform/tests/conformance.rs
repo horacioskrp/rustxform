@@ -73,6 +73,7 @@ golden!(conformance_cascading_select_form, "cascade");
 golden!(conformance_multilingual_media_form, "mmedia");
 golden!(conformance_entities_form, "entity");
 golden!(conformance_rank_form, "rank");
+golden!(conformance_background_audio_form, "bgaudio");
 
 #[test]
 fn xlsx_reader_matches_markdown_golden() {
