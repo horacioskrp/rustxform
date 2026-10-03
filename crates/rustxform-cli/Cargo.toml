@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Command-line interface for rustxform (XLSForm → XForm)."
+readme = "../../README.md"
+keywords = ["xlsform", "xform", "forms", "survey", "cli"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "rustxform"
