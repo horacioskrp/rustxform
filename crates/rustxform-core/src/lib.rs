@@ -15,6 +15,10 @@ pub struct Settings {
     pub version: Option<String>,
     /// Default language label, e.g. `French (fr)`.
     pub default_language: Option<String>,
+    /// `instance_name` expression (populates `meta/instanceName`), if any.
+    pub instance_name: Option<String>,
+    /// `style` setting (becomes the body `class`), if any.
+    pub style: Option<String>,
 }
 
 /// Localizable text from a `label`/`hint` column family.
@@ -184,6 +188,10 @@ pub struct Container {
     pub name: String,
     /// Default-language label, if any.
     pub label: Option<String>,
+    /// `appearance` column value (e.g. `field-list`), if any.
+    pub appearance: Option<String>,
+    /// `repeat_count` expression (repeats only), if any.
+    pub count: Option<String>,
     /// Ordered child nodes.
     pub children: Vec<Node>,
 }
@@ -282,6 +290,11 @@ pub fn resolve_builtin(kind: &str) -> Option<Builtin> {
         "end" => b(None, "dateTime", false, preload("timestamp", "end")),
         "today" => b(None, "date", false, preload("date", "today")),
         "deviceid" => b(None, "string", false, preload("property", "deviceid")),
+        "username" => b(None, "string", false, preload("property", "username")),
+        "phonenumber" => b(None, "string", false, preload("property", "phonenumber")),
+        "email" => b(None, "string", false, preload("property", "email")),
+        "simserial" => b(None, "string", false, preload("property", "simserial")),
+        "subscriberid" => b(None, "string", false, preload("property", "subscriberid")),
         _ => return None,
     })
 }

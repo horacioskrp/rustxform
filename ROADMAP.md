@@ -72,5 +72,16 @@ A flat form with `text` / `integer` / `note` questions compiles end to end.
 - [x] Clear, actionable error messages; `*_checked` APIs and CLI rejection
 - [x] **GO:** valid forms pass, invalid forms are rejected with the right error
 
-v1 scope complete. Possible follow-ups: `constraint_message`/media columns,
-`parameters`, `${}` label outputs, geo/range validations, JSON warnings.
+v1 scope complete.
+
+## Post-v1 (done)
+
+- [x] Advanced columns: `constraint_message`/`required_message`, `parameters`
+      (range `start`/`end`/`step`), `${}` outputs in labels, `media::` images/
+      audio/video (itext), `default` values
+- [x] Validations: range parameters, geo defaults; warnings for missing
+      settings and unrecognized survey columns
+- [x] CLI `--json` report (status / warnings / errors)
+
+Remaining ideas: multilingual `constraint_message`/media, choice filters,
+`search()`/external selects, `search`/cascading selects, published crate.

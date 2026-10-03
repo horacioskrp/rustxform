@@ -56,6 +56,8 @@ fn parse_settings(sheet: &Sheet) -> Settings {
             "form_id" => settings.form_id = value,
             "version" => settings.version = value,
             "default_language" => settings.default_language = value,
+            "instance_name" => settings.instance_name = value,
+            "style" => settings.style = value,
             _ => {}
         }
     }
@@ -153,6 +155,7 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
     let rmsg_col = column("required_message");
     let params_col = column("parameters");
     let default_col = column("default");
+    let count_col = column("repeat_count");
     let label_cols = loc_columns(header, "label");
     let hint_cols = loc_columns(header, "hint");
     let media_cols = loc_columns(header, "media");
@@ -169,6 +172,8 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
         let container = || Container {
             name: cell(name_col).to_owned(),
             label: optional(cell(plain_label_col)),
+            appearance: optional(cell(appearance_col)),
+            count: optional(cell(count_col)),
             children: Vec::new(),
         };
 

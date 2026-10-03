@@ -66,12 +66,16 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
     write_choice_instances(&mut w, survey, multilingual)?;
     let index = build_index(&survey.children);
     write_binds(&mut w, &survey.children, &format!("/{ROOT}"), &index)?;
-    write_instance_id_bind(&mut w)?;
+    write_meta_binds(&mut w, survey)?;
 
     close(&mut w, "model")?;
     close(&mut w, "h:head")?;
 
-    open(&mut w, "h:body")?;
+    let mut body = BytesStart::new("h:body");
+    if let Some(style) = &survey.settings.style {
+        body.push_attribute(("class", style.as_str()));
+    }
+    w.write_event(Event::Start(body))?;
     write_body(
         &mut w,
         &survey.children,
@@ -246,6 +250,9 @@ fn write_primary_instance(w: &mut W, survey: &Survey, form_id: &str) -> Result<(
     open(w, "instance")?;
     let mut root = BytesStart::new(ROOT);
     root.push_attribute(("id", form_id));
+    if let Some(version) = &survey.settings.version {
+        root.push_attribute(("version", version.as_str()));
+    }
     w.write_event(Event::Start(root))?;
 
     for node in &survey.children {
@@ -254,6 +261,9 @@ fn write_primary_instance(w: &mut W, survey: &Survey, form_id: &str) -> Result<(
 
     open(w, "meta")?;
     w.write_event(Event::Empty(BytesStart::new("instanceID")))?;
+    if survey.settings.instance_name.is_some() {
+        w.write_event(Event::Empty(BytesStart::new("instanceName")))?;
+    }
     close(w, "meta")?;
     close(w, ROOT)?;
     close(w, "instance")?;
@@ -269,6 +279,12 @@ fn write_instance_node(w: &mut W, node: &Node) -> Result<(), XformError> {
         },
         Node::Group(g) => write_instance_container(w, g, false)?,
         Node::Repeat(r) => {
+            // `repeat_count` synthesizes a sibling `<name_count>` calculate node.
+            if r.count.is_some() {
+                w.write_event(Event::Empty(BytesStart::new(
+                    format!("{}_count", r.name).as_str(),
+                )))?;
+            }
             // A repeat emits its template plus one live instance.
             write_instance_container(w, r, true)?;
             write_instance_container(w, r, false)?;
@@ -357,7 +373,16 @@ fn write_binds(
     for node in nodes {
         match node {
             Node::Question(q) => write_bind(w, q, &format!("{parent}/{}", q.name), index)?,
-            Node::Group(c) | Node::Repeat(c) => {
+            Node::Group(c) => write_binds(w, &c.children, &format!("{parent}/{}", c.name), index)?,
+            Node::Repeat(c) => {
+                if let Some(count) = &c.count {
+                    let mut bind = BytesStart::new("bind");
+                    bind.push_attribute(("nodeset", format!("{parent}/{}_count", c.name).as_str()));
+                    bind.push_attribute(("type", "string"));
+                    bind.push_attribute(("readonly", "true()"));
+                    bind.push_attribute(("calculate", count.as_str()));
+                    w.write_event(Event::Empty(bind))?;
+                }
                 write_binds(w, &c.children, &format!("{parent}/{}", c.name), index)?;
             }
         }
@@ -458,14 +483,23 @@ fn flag_value(raw: Option<&str>, resolve: &impl Fn(&str) -> Option<String>) -> O
     }
 }
 
-/// Write the fixed `instanceID` metadata bind.
-fn write_instance_id_bind(w: &mut W) -> Result<(), XformError> {
+/// Write the `meta` binds: the fixed `instanceID`, and `instanceName` when a
+/// form `instance_name` is set.
+fn write_meta_binds(w: &mut W, survey: &Survey) -> Result<(), XformError> {
     let mut bind = BytesStart::new("bind");
     bind.push_attribute(("nodeset", format!("/{ROOT}/meta/instanceID").as_str()));
     bind.push_attribute(("type", "string"));
     bind.push_attribute(("readonly", "true()"));
     bind.push_attribute(("jr:preload", "uid"));
     w.write_event(Event::Empty(bind))?;
+
+    if let Some(name_expr) = &survey.settings.instance_name {
+        let mut bind = BytesStart::new("bind");
+        bind.push_attribute(("nodeset", format!("/{ROOT}/meta/instanceName").as_str()));
+        bind.push_attribute(("type", "string"));
+        bind.push_attribute(("calculate", name_expr.as_str()));
+        w.write_event(Event::Empty(bind))?;
+    }
     Ok(())
 }
 
@@ -578,6 +612,9 @@ fn write_group(
 ) -> Result<(), XformError> {
     let mut group = BytesStart::new("group");
     group.push_attribute(("ref", path));
+    if let Some(appearance) = &c.appearance {
+        group.push_attribute(("appearance", appearance.as_str()));
+    }
     w.write_event(Event::Start(group))?;
     if let Some(label) = &c.label {
         text_element(w, "label", label)?;
@@ -586,6 +623,9 @@ fn write_group(
     if repeat {
         let mut r = BytesStart::new("repeat");
         r.push_attribute(("nodeset", path));
+        if c.count.is_some() {
+            r.push_attribute(("jr:count", format!(" {path}_count ").as_str()));
+        }
         w.write_event(Event::Start(r))?;
         write_body(w, &c.children, path, ml, index)?;
         close(w, "repeat")?;

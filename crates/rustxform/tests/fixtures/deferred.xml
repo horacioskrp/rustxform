@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms" xmlns:odk="http://www.opendatakit.org/xforms">
+  <h:head>
+    <h:title>Deferred</h:title>
+    <model odk:xforms-version="1.0.0">
+      <instance>
+        <data id="deferred" version="2026010301">
+          <user/>
+          <phone/>
+          <mail/>
+          <sim/>
+          <sub/>
+          <meta_g>
+            <inside/>
+          </meta_g>
+          <loop_count/>
+          <loop jr:template="">
+            <item/>
+          </loop>
+          <loop>
+            <item/>
+          </loop>
+          <meta>
+            <instanceID/>
+            <instanceName/>
+          </meta>
+        </data>
+      </instance>
+      <bind nodeset="/data/user" jr:preload="property" type="string" jr:preloadParams="username"/>
+      <bind nodeset="/data/phone" jr:preload="property" type="string" jr:preloadParams="phonenumber"/>
+      <bind nodeset="/data/mail" jr:preload="property" type="string" jr:preloadParams="email"/>
+      <bind nodeset="/data/sim" jr:preload="property" type="string" jr:preloadParams="simserial"/>
+      <bind nodeset="/data/sub" jr:preload="property" type="string" jr:preloadParams="subscriberid"/>
+      <bind nodeset="/data/meta_g/inside" type="string"/>
+      <bind nodeset="/data/loop_count" type="string" readonly="true()" calculate="3"/>
+      <bind nodeset="/data/loop/item" type="string"/>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" jr:preload="uid"/>
+      <bind nodeset="/data/meta/instanceName" type="string" calculate="item"/>
+    </model>
+  </h:head>
+  <h:body class="pages">
+    <group appearance="field-list" ref="/data/meta_g">
+      <label>Meta</label>
+      <input ref="/data/meta_g/inside">
+        <label>Inside</label>
+      </input>
+    </group>
+    <group ref="/data/loop">
+      <label>Loop</label>
+      <repeat nodeset="/data/loop" jr:count=" /data/loop_count ">
+        <input ref="/data/loop/item">
+          <label>Item</label>
+        </input>
+      </repeat>
+    </group>
+  </h:body>
+</h:html>
