@@ -138,7 +138,8 @@ by a round-trip property test.
       groups / repeats / counted repeats / nesting)
 - [ ] XPath → `${name}` recovery (cosmetic; round-trip already holds via
       literal pass-through, since the emitter only rewrites `${…}`)
-- [ ] Reconstruct choice lists from secondary instances + `<itemset>`/`<item>`
+- [x] Reconstruct inline choice lists from secondary instances (name/label +
+      cascade `extra` columns); select questions keep their list id
 - [ ] Recover data-only nodes (`calculate`, preloads) from the instance + binds
 - [ ] Decode `<itext>` into multilingual `label`/`hint`, `languages`,
       `default_language`, media

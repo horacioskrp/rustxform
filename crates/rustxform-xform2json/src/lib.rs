@@ -18,7 +18,8 @@ use std::collections::HashMap;
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 use rustxform_core::{
-    Container, Kind, Localized, Node, Question, SelectType, Survey, resolve_builtin,
+    Choice, ChoiceList, Container, Kind, Localized, Node, Question, SelectType, Survey,
+    resolve_builtin,
 };
 
 /// An error produced while parsing an XForm.
@@ -43,12 +44,93 @@ pub fn xform_to_survey(xml: &str) -> Result<Survey, Xform2JsonError> {
     let binds = collect_binds(xml)?;
     let (title, form_id) = collect_metadata(xml)?;
     let children = collect_body_nodes(xml, &binds)?;
+    let choices = collect_choices(xml)?;
 
     let mut survey = Survey::default();
     survey.settings.title = title;
     survey.settings.form_id = form_id;
     survey.children = children;
+    survey.choices = choices;
     Ok(survey)
+}
+
+/// Reconstruct inline choice lists from secondary instances of the form
+/// `<instance id="L"><root><item><name>…</name><label>…</label>…</item>…`.
+///
+/// Instances with a `src` (external files, `pulldata`, last-saved) and the
+/// primary instance (which has no `id`) are skipped.
+fn collect_choices(xml: &str) -> Result<Vec<ChoiceList>, Xform2JsonError> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+
+    let mut lists: Vec<ChoiceList> = Vec::new();
+    let mut list: Option<ChoiceList> = None;
+    let mut item: Option<Choice> = None;
+    let mut field: Option<String> = None;
+    let mut buffer = String::new();
+
+    loop {
+        match read(&mut reader)? {
+            Event::Eof => break,
+            Event::Start(e) | Event::Empty(e) => {
+                let name = local_name(e.name().as_ref());
+                if name == "instance" {
+                    if let (Some(id), None) = (attr(&e, "id"), attr(&e, "src")) {
+                        list = Some(ChoiceList {
+                            name: id,
+                            items: Vec::new(),
+                        });
+                    }
+                } else if list.is_some() {
+                    match name.as_str() {
+                        "root" => {}
+                        "item" => {
+                            item = Some(Choice {
+                                name: String::new(),
+                                label: Localized::default(),
+                                extra: Vec::new(),
+                            });
+                        }
+                        _ if item.is_some() => {
+                            field = Some(name);
+                            buffer.clear();
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Event::Text(t) if field.is_some() => {
+                buffer.push_str(&t.unescape().map_err(xml_err)?);
+            }
+            Event::End(e) => {
+                let name = local_name(e.name().as_ref());
+                if list.is_none() {
+                    continue;
+                }
+                if Some(name.as_str()) == field.as_deref() {
+                    if let Some(choice) = item.as_mut() {
+                        let value = std::mem::take(&mut buffer);
+                        match name.as_str() {
+                            "name" => choice.name = value,
+                            "label" => choice.label.default = Some(value),
+                            other => choice.extra.push((other.to_owned(), value)),
+                        }
+                    }
+                    field = None;
+                } else if name == "item" {
+                    if let (Some(choice), Some(choice_list)) = (item.take(), list.as_mut()) {
+                        choice_list.items.push(choice);
+                    }
+                } else if name == "instance" {
+                    if let Some(choice_list) = list.take() {
+                        lists.push(choice_list);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(lists)
 }
 
 /// A `<bind>`'s recovered attributes, keyed by nodeset in [`collect_binds`].
@@ -512,6 +594,11 @@ mod tests {
             "| survey |\n|  | type | name | label |\n|  | begin_repeat | r | R |\n\
              |  | begin_group | gg | GG |\n|  | text | yy | YY |\n|  | end_group |  |  |\n\
              |  | end_repeat |  |  |\n",
+            // Inline single- and multi-select with their choice instances.
+            "| survey |\n|  | type | name | label |\n|  | select_one yn | s1 | S1 |\n\
+             |  | select_multiple col | s2 | S2 |\n\
+             | choices |\n|  | list_name | name | label |\n|  | yn | y | Yes |\n\
+             |  | yn | n | No |\n|  | col | r | Red |\n|  | col | g | Green |\n",
         ];
         for md in forms {
             let (first, second) = round_trip(md);
