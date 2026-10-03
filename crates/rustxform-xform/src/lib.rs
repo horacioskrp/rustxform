@@ -45,6 +45,12 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
     for (prefix, uri) in NAMESPACES {
         html.push_attribute((*prefix, *uri));
     }
+    if survey.entity.is_some() {
+        html.push_attribute((
+            "xmlns:entities",
+            "http://www.opendatakit.org/xforms/entities",
+        ));
+    }
     w.write_event(Event::Start(html))?;
 
     open(&mut w, "h:head")?;
@@ -52,6 +58,9 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
 
     let mut model = BytesStart::new("model");
     model.push_attribute(("odk:xforms-version", "1.0.0"));
+    if survey.entity.is_some() {
+        model.push_attribute(("entities:entities-version", "2024.1.0"));
+    }
     w.write_event(Event::Start(model))?;
 
     let itext_langs: Vec<&str> = if multilingual {
@@ -78,6 +87,9 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
         &index,
         multilingual,
     )?;
+    if survey.entity.is_some() {
+        write_entity_binds(&mut w, survey, &index)?;
+    }
     write_meta_binds(&mut w, survey)?;
 
     close(&mut w, "model")?;
@@ -299,6 +311,15 @@ fn write_primary_instance(w: &mut W, survey: &Survey, form_id: &str) -> Result<(
     }
 
     open(w, "meta")?;
+    if let Some(entity) = &survey.entity {
+        let mut element = BytesStart::new("entity");
+        element.push_attribute(("dataset", entity.dataset.as_str()));
+        element.push_attribute(("create", "1"));
+        element.push_attribute(("id", ""));
+        w.write_event(Event::Start(element))?;
+        w.write_event(Event::Empty(BytesStart::new("label")))?;
+        close(w, "entity")?;
+    }
     w.write_event(Event::Empty(BytesStart::new("instanceID")))?;
     if survey.settings.instance_name.is_some() {
         w.write_event(Event::Empty(BytesStart::new("instanceName")))?;
@@ -481,7 +502,45 @@ fn write_bind(
             push_logic_attributes(&mut bind, question, &resolve, false, nodeset, ml);
         }
     }
+    if let Some(save_to) = &question.save_to {
+        bind.push_attribute(("entities:saveto", save_to.as_str()));
+    }
     w.write_event(Event::Empty(bind))?;
+    Ok(())
+}
+
+/// Emit the entity binds: the `@id` bind + its `uuid()` setvalue, and the
+/// label bind when a label expression is declared.
+fn write_entity_binds(
+    w: &mut W,
+    survey: &Survey,
+    index: &HashMap<String, Vec<Step>>,
+) -> Result<(), XformError> {
+    let Some(entity) = &survey.entity else {
+        return Ok(());
+    };
+
+    let mut id_bind = BytesStart::new("bind");
+    id_bind.push_attribute(("nodeset", format!("/{ROOT}/meta/entity/@id").as_str()));
+    id_bind.push_attribute(("readonly", "true()"));
+    id_bind.push_attribute(("type", "string"));
+    w.write_event(Event::Empty(id_bind))?;
+
+    let mut setvalue = BytesStart::new("setvalue");
+    setvalue.push_attribute(("ref", format!("/{ROOT}/meta/entity/@id").as_str()));
+    setvalue.push_attribute(("event", "odk-instance-first-load"));
+    setvalue.push_attribute(("value", "uuid()"));
+    w.write_event(Event::Empty(setvalue))?;
+
+    if let Some(label) = &entity.label {
+        let calculate = rewrite_references(label, |name: &str| resolve_ref(index, &[], name));
+        let mut label_bind = BytesStart::new("bind");
+        label_bind.push_attribute(("nodeset", format!("/{ROOT}/meta/entity/label").as_str()));
+        label_bind.push_attribute(("calculate", calculate.as_str()));
+        label_bind.push_attribute(("readonly", "true()"));
+        label_bind.push_attribute(("type", "string"));
+        w.write_event(Event::Empty(label_bind))?;
+    }
     Ok(())
 }
 

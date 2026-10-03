@@ -164,6 +164,8 @@ pub struct Question {
     pub default: Option<String>,
     /// `choice_filter` expression for cascading selects, if any.
     pub choice_filter: Option<String>,
+    /// `save_to` column: the entity property this answer populates, if any.
+    pub save_to: Option<String>,
 }
 
 impl Question {
@@ -227,6 +229,16 @@ pub enum Node {
     Repeat(Container),
 }
 
+/// An ODK Entities declaration (the `entities` sheet): the survey creates an
+/// entity in a dataset when submitted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Entity {
+    /// Target dataset name.
+    pub dataset: String,
+    /// Label expression for the created entity, if any.
+    pub label: Option<String>,
+}
+
 /// A parsed XLSForm survey: settings, a node tree and choice lists.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Survey {
@@ -238,6 +250,8 @@ pub struct Survey {
     pub choices: Vec<ChoiceList>,
     /// Declared languages, in order; empty for a single-language form.
     pub languages: Vec<String>,
+    /// Entities declaration from the `entities` sheet, if any.
+    pub entity: Option<Entity>,
 }
 
 impl Survey {

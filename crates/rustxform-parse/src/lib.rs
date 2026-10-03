@@ -5,8 +5,8 @@
 //! (with `::Lang` qualifiers) and collects the form's languages.
 
 use rustxform_core::{
-    Choice, ChoiceList, Container, Kind, Localized, Media, Node, Question, Settings, Survey,
-    resolve_builtin,
+    Choice, ChoiceList, Container, Entity, Kind, Localized, Media, Node, Question, Settings,
+    Survey, resolve_builtin,
 };
 use rustxform_reader::{Sheet, Workbook};
 
@@ -34,9 +34,28 @@ pub fn workbook_to_survey(workbook: &Workbook) -> Result<Survey, ParseError> {
     if let Some(sheet) = workbook.sheet("survey") {
         survey.children = parse_nodes(sheet);
     }
+    if let Some(sheet) = workbook.sheet("entities") {
+        survey.entity = parse_entity(sheet);
+    }
     survey.languages = collect_languages(workbook.sheet("survey"), workbook.sheet("choices"));
 
     Ok(survey)
+}
+
+/// Read the single-row `entities` sheet into an [`Entity`].
+fn parse_entity(sheet: &Sheet) -> Option<Entity> {
+    let (header, values) = (sheet.rows.first()?, sheet.rows.get(1)?);
+    let column = |name: &str| header.iter().position(|h| h == name);
+    let cell = |col: Option<usize>| col.and_then(|i| values.get(i)).map_or("", String::as_str);
+
+    let dataset = cell(column("dataset"));
+    if dataset.is_empty() {
+        return None;
+    }
+    Some(Entity {
+        dataset: dataset.to_owned(),
+        label: optional(cell(column("label"))),
+    })
 }
 
 /// Read the single-row `settings` sheet into [`Settings`].
@@ -219,6 +238,7 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
     let params_col = column("parameters");
     let default_col = column("default");
     let filter_col = column("choice_filter");
+    let saveto_col = column("save_to");
     let count_col = column("repeat_count");
     let label_cols = loc_columns(header, "label");
     let hint_cols = loc_columns(header, "hint");
@@ -272,6 +292,7 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
                     media: row_media(&media_cols, row),
                     default: optional(cell(default_col)),
                     choice_filter: optional(cell(filter_col)),
+                    save_to: optional(cell(saveto_col)),
                 };
                 place(&mut root, &mut stack, Node::Question(question));
             }
