@@ -6,7 +6,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 
 use anyhow::{Context, Result, bail};
 use clap::Parser;
@@ -24,6 +24,9 @@ struct Cli {
     /// Report warnings and errors as JSON on stdout.
     #[arg(long)]
     json: bool,
+    /// Run ODK Validate on the output: `java -jar <JAR> <xform>` (needs Java).
+    #[arg(long, value_name = "JAR")]
+    odk_validate: Option<PathBuf>,
 }
 
 fn main() -> ExitCode {
@@ -77,6 +80,19 @@ fn write_output(cli: &Cli, built: &Built) -> Result<ExitCode> {
         .unwrap_or_else(|| cli.input.with_extension("xml"));
     fs::write(&output, &built.xform).with_context(|| format!("writing {}", output.display()))?;
 
+    if let Some(jar) = &cli.odk_validate {
+        if !odk_validate(jar, &output)? {
+            if cli.json {
+                let report =
+                    json!({ "status": "invalid-xform", "output": output.display().to_string() });
+                println!("{report}");
+            } else {
+                eprintln!("ODK Validate rejected {}", output.display());
+            }
+            return Ok(ExitCode::FAILURE);
+        }
+    }
+
     let warnings: Vec<String> = built.warnings.iter().map(ToString::to_string).collect();
     if cli.json {
         let report = json!({ "status": "ok", "output": output.display().to_string(), "warnings": warnings, "errors": [] });
@@ -88,6 +104,23 @@ fn write_output(cli: &Cli, built: &Built) -> Result<ExitCode> {
         println!("wrote {}", output.display());
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// Run ODK Validate (`java -jar <jar> <xform>`) and relay its output; returns
+/// whether the XForm was accepted.
+fn odk_validate(jar: &Path, xform: &Path) -> Result<bool> {
+    let output = Command::new("java")
+        .arg("-jar")
+        .arg(jar)
+        .arg(xform)
+        .output()
+        .with_context(|| "running ODK Validate (is `java` installed and on PATH?)")?;
+
+    let report = String::from_utf8_lossy(&output.stderr);
+    if !report.trim().is_empty() {
+        eprint!("{report}");
+    }
+    Ok(output.status.success())
 }
 
 fn report_errors(as_json: bool, errors: &[rustxform::ValidationError]) {
