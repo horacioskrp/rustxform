@@ -14,6 +14,8 @@ golden tests (compile a form, compare the XForm after XML canonicalization).
 | 5 | Multilingual labels & advanced columns | ✅ done |
 | 6 | XLSX/XLS/CSV readers & CLI parity | ✅ done |
 | 7 | Validations | ✅ done |
+| 8 | Broaden parity (dynamic actions & niche types) | 🚧 in progress |
+| 9 | Enrich `xform2json` toward round-trip | 🚧 in progress |
 
 ## Phase 0 — Workspace & oracle ✅
 
@@ -101,6 +103,38 @@ tags), **xml-external**, and entity **update** / **create_if** / **update_if**.
 Cross-checked against pyxform: all supported forms are byte-identical after C14N.
 
 Intentionally out of scope: `choices` header-coherence warnings (would flag
-legitimate cascade columns), entity update/`create_if`/`update_if`, and
-reconstructing groups/itext/choices in xform2json. Possible next: published
-crate.
+legitimate cascade columns).
+
+## Phase 8 — Broaden parity 🚧
+
+Each item lands with a golden fixture (oracle-generated, byte-identical after
+C14N) before it is checked off.
+
+- [ ] `hidden` type (string bind, no body control)
+- [ ] `trigger` + `calculation` → `odk:setvalue` dynamic defaults / recalculation
+      (`event="xforms-value-changed"` / `odk-instance-first-load`)
+- [ ] `or_other` on `select_one` / `select_multiple` (synthetic "other" choice +
+      linked text question + bind)
+- [ ] Encrypted forms: `public_key` → `<submission base64RsaPublicKey=…>`
+- [ ] Submission settings: `submission_url`, `auto_send`, `auto_delete`
+- [ ] `guidance_hint` (itext `…/guidance` form)
+- [ ] Media/appearance params: image `max-pixels`, audio `quality`,
+      `signature`/`annotate`/`draw`, geopoint capture-accuracy
+- [ ] `pulldata()` + CSV external instances (`jr://file-csv/…`)
+- [ ] `background-geopoint` (passive capture, symmetric to `background-audio`)
+- [ ] **GO:** new parity fixtures pass; full corpus still byte-identical
+
+## Phase 9 — Enrich `xform2json` 🚧
+
+Grow the reverse parser from a flat subset toward a faithful inverse, locked in
+by a round-trip property test.
+
+- [ ] Full binds: `relevant`, `constraint`, `required`, `readonly`,
+      `calculate`, constraint/required messages, preloads
+- [ ] XPath → `${name}` recovery (inverse of `rustxform-expr`, via a nodeset index)
+- [ ] Reconstruct the group/repeat tree (`<group>`/`<repeat>`, `jr:template`)
+- [ ] Reconstruct choice lists from secondary instances + `<itemset>`/`<item>`
+- [ ] Decode `<itext>` into multilingual `label`/`hint`, `languages`,
+      `default_language`, media
+- [ ] Recover settings: `version`, `style`, `instance_name`; entities from binds
+- [ ] **GO:** round-trip `XForm → Survey → XForm` is idempotent on the corpus

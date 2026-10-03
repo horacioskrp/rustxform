@@ -364,6 +364,7 @@ pub fn resolve_builtin(kind: &str) -> Option<Builtin> {
             None,
         ),
         "calculate" => b(None, "string", false, None),
+        "hidden" => b(None, "string", false, None),
         "start" => b(None, "dateTime", false, preload("timestamp", "start")),
         "end" => b(None, "dateTime", false, preload("timestamp", "end")),
         "today" => b(None, "date", false, preload("date", "today")),
