@@ -87,5 +87,9 @@ v1 scope complete.
 - [x] `field-list` group appearance, `repeat_count` (`jr:count`)
 - [x] Settings: `version`, `instance_name`, `style`
 
-Remaining ideas: multilingual `constraint_message`/media, `choice_filter`/
-cascading selects, `select_*_from_file`, `last-saved#`, published crate.
+Also done: `select_*_from_file`, `last-saved#`, multilingual
+`constraint_message`/`required_message`, `choice_filter` (cascading selects).
+
+Intentionally out of scope: multilingual `media::` (niche), IANA language-tag
+validation (needs the full registry), `choices` header-coherence warnings
+(would flag legitimate cascade columns). Possible next: published crate.
