@@ -87,7 +87,20 @@ cargo fmt --all --check
 Correctness is driven by golden tests: an input form is compiled and the result
 is compared to an expected XForm after XML canonicalization (attribute order and
 insignificant whitespace are ignored). Fixtures live under
-`crates/rustxform/tests/fixtures/`.
+`crates/rustxform/tests/fixtures/` as `<name>.md` (input) + `<name>.xml`
+(golden) pairs, and `cargo test` compiles every pair and checks it — no Python
+needed to run the tests.
+
+### Regenerating the corpus
+
+The golden `.xml` files are produced by the reference compiler
+([pyxform](https://github.com/XLSForm/pyxform)) and committed; a pair is only
+written if, after C14N canonicalization, it is byte-identical to rustxform's own
+output. rustxform cannot be its own oracle, so regeneration depends on pyxform +
+lxml (Python). The committed `scripts/gen_corpus.py` drives it; see its module
+docstring for the exact two-step Docker commands (build the CLI binary, then run
+the script with `RUSTXFORM_BIN` pointing at it). Day to day you never need this —
+only when adding or updating corpus forms.
 
 ## License
 
