@@ -1040,6 +1040,9 @@ fn write_label(
         } else {
             text_element(w, "label", text)?;
         }
+    } else if !q.hint.is_empty() {
+        // No label text but a hint exists: pyxform still emits an empty label.
+        w.write_event(Event::Empty(BytesStart::new("label")))?;
     }
     Ok(())
 }

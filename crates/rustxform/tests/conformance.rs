@@ -84,6 +84,7 @@ golden!(conformance_entity_update_if_form, "eui");
 golden!(conformance_range_default_form, "rangedefault");
 golden!(conformance_file_form, "file");
 golden!(conformance_phone_number_form, "phonenumber");
+golden!(conformance_empty_label_with_hint_form, "phonenolabel");
 
 #[test]
 fn xlsx_reader_matches_markdown_golden() {
