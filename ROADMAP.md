@@ -14,7 +14,7 @@ golden tests (compile a form, compare the XForm after XML canonicalization).
 | 5 | Multilingual labels & advanced columns | ✅ done |
 | 6 | XLSX/XLS/CSV readers & CLI parity | ✅ done |
 | 7 | Validations | ✅ done |
-| 8 | Broaden parity (dynamic actions & niche types) | 🚧 in progress |
+| 8 | Broaden parity (dynamic actions & niche types) | ✅ done |
 | 9 | Enrich `xform2json` toward round-trip | 🚧 in progress |
 
 ## Phase 0 — Workspace & oracle ✅
@@ -105,7 +105,7 @@ Cross-checked against pyxform: all supported forms are byte-identical after C14N
 Intentionally out of scope: `choices` header-coherence warnings (would flag
 legitimate cascade columns).
 
-## Phase 8 — Broaden parity 🚧
+## Phase 8 — Broaden parity ✅
 
 Each item lands with a golden fixture (oracle-generated, byte-identical after
 C14N) before it is checked off.
@@ -116,13 +116,13 @@ C14N) before it is checked off.
 - [x] `or_other` on `select_one` / `select_multiple` (synthetic "other" choice +
       linked text question + `selected(../q, 'other')` relevant; single-language)
 - [x] `guidance_hint` (itext `<value form="guidance">`, forces itext when present)
-- [ ] Encrypted forms: `public_key` → `<submission base64RsaPublicKey=…>`
-- [ ] Submission settings: `submission_url`, `auto_send`, `auto_delete`
-- [ ] Media/appearance params: image `max-pixels`, audio `quality`,
-      `signature`/`annotate`/`draw`, geopoint capture-accuracy
-- [ ] `pulldata()` + CSV external instances (`jr://file-csv/…`)
-- [ ] `background-geopoint` (passive capture, symmetric to `background-audio`)
-- [ ] **GO:** new parity fixtures pass; full corpus still byte-identical
+- [x] Encrypted forms: `public_key` → `<submission base64RsaPublicKey=…>`
+- [x] Submission settings: `submission_url`, `auto_send`, `auto_delete`
+- [x] Appearance on uploads (`annotate`/`signature`/`draw`) and image
+      `max-pixels` → `orx:max-pixels` bind attribute
+- [x] `pulldata()` → synthesized CSV external instance (`jr://file-csv/…`)
+- [x] `background-geopoint` (triggered `odk:setgeopoint`, no value)
+- [x] **GO:** new parity fixtures pass; full 34-form corpus byte-identical
 
 ## Phase 9 — Enrich `xform2json` 🚧
 

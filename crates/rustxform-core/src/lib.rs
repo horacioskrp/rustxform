@@ -19,6 +19,14 @@ pub struct Settings {
     pub instance_name: Option<String>,
     /// `style` setting (becomes the body `class`), if any.
     pub style: Option<String>,
+    /// `public_key` for encrypted submissions (`base64RsaPublicKey`), if any.
+    pub public_key: Option<String>,
+    /// `submission_url` (the `<submission action>`), if any.
+    pub submission_url: Option<String>,
+    /// `auto_send` setting (`orx:auto-send`), if any.
+    pub auto_send: Option<String>,
+    /// `auto_delete` setting (`orx:auto-delete`), if any.
+    pub auto_delete: Option<String>,
 }
 
 /// Localizable text from a `label`/`hint` column family.
@@ -400,6 +408,9 @@ pub fn resolve_builtin(kind: &str) -> Option<Builtin> {
                 event: "odk-instance-first-load",
             }),
         },
+        // Passive geopoint capture triggered by another field's change; the
+        // `odk:setgeopoint` action is emitted on that trigger node, not here.
+        "background-geopoint" => b(None, "geopoint", false, None),
         _ => return None,
     })
 }

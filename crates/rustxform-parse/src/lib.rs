@@ -135,6 +135,10 @@ fn parse_settings(sheet: &Sheet) -> Settings {
             "default_language" => settings.default_language = value,
             "instance_name" => settings.instance_name = value,
             "style" => settings.style = value,
+            "public_key" => settings.public_key = value,
+            "submission_url" => settings.submission_url = value,
+            "auto_send" => settings.auto_send = value,
+            "auto_delete" => settings.auto_delete = value,
             _ => {}
         }
     }

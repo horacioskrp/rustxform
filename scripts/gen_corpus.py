@@ -156,6 +156,21 @@ FORMS = {
         "choices": [["list_name", "name", "label"], ["yn", "y", "Yes"], ["yn", "n", "No"]], "settings": S},
     "c_guidance": {"survey": [["type", "name", "label", "guidance_hint"],
         ["text", "q", "Q", "Fill your legal name"]], "settings": S},
+    "c_encrypted": {"survey": [["type", "name", "label"], ["text", "q", "Q"]],
+        "settings": [["form_title", "form_id", "public_key"], ["F", "f", "MIIBIjANBgkqh"]]},
+    "c_submission": {"survey": [["type", "name", "label"], ["text", "q", "Q"]],
+        "settings": [["form_title", "form_id", "submission_url", "auto_send", "auto_delete"],
+        ["F", "f", "https://example.org/submit", "true", "false"]]},
+    "c_image_maxpixels": {"survey": [["type", "name", "label", "parameters"],
+        ["image", "photo", "Photo", "max-pixels=1024"]], "settings": S},
+    "c_image_annotate": {"survey": [["type", "name", "label", "appearance"],
+        ["image", "sig", "Sign", "annotate"]], "settings": S},
+    "c_pulldata": {"survey": [["type", "name", "label", "calculation"],
+        ["text", "id", "ID", ""],
+        ["calculate", "nm", "", "pulldata('fruits', 'name', 'id_key', " + D + "{id})"]], "settings": S},
+    "c_bg_geopoint": {"survey": [["type", "name", "label", "trigger"],
+        ["background-geopoint", "bg", "", D + "{q}"],
+        ["text", "q", "Q", ""]], "settings": S},
 }
 
 

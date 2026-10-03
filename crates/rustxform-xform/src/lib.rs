@@ -10,7 +10,8 @@ use std::collections::HashMap;
 use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
 use rustxform_core::{
-    ChoiceList, Container, Control, Kind, Localized, Media, Node, Question, SelectType, Survey,
+    ChoiceList, Container, Control, Kind, Localized, Media, Node, Question, SelectType, Settings,
+    Survey,
 };
 use rustxform_expr::rewrite_references;
 
@@ -64,6 +65,7 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
         model.push_attribute(("entities:entities-version", "2024.1.0"));
     }
     w.write_event(Event::Start(model))?;
+    write_submission(&mut w, &survey.settings)?;
 
     let itext_langs: Vec<&str> = if multilingual {
         survey.languages.iter().map(String::as_str).collect()
@@ -87,8 +89,14 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
         instance.push_attribute(("src", format!("jr://file/{name}.xml").as_str()));
         w.write_event(Event::Empty(instance))?;
     }
+    for name in collect_pulldata(&survey.children) {
+        let mut instance = BytesStart::new("instance");
+        instance.push_attribute(("id", name.as_str()));
+        instance.push_attribute(("src", format!("jr://file-csv/{name}.csv").as_str()));
+        w.write_event(Event::Empty(instance))?;
+    }
     let index = build_index(&survey.children);
-    let setvalues = collect_setvalues(&survey.children, &index);
+    let actions = collect_trigger_actions(&survey.children, &index);
     write_binds(
         &mut w,
         &survey.children,
@@ -113,7 +121,7 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
         ml: multilingual,
         index: &index,
         osm: &survey.osm_tags,
-        setvalues: &setvalues,
+        actions: &actions,
     };
     write_body(&mut w, &survey.children, &format!("/{ROOT}"), &ctx)?;
     close(&mut w, "h:body")?;
@@ -133,6 +141,33 @@ const NAMESPACES: &[(&str, &str)] = &[
     ("xmlns:orx", "http://openrosa.org/xforms"),
     ("xmlns:odk", "http://www.opendatakit.org/xforms"),
 ];
+
+/// Emit a `<submission>` element when any submission/encryption setting is set.
+fn write_submission(w: &mut W, settings: &Settings) -> Result<(), XformError> {
+    if settings.submission_url.is_none()
+        && settings.public_key.is_none()
+        && settings.auto_send.is_none()
+        && settings.auto_delete.is_none()
+    {
+        return Ok(());
+    }
+    let mut element = BytesStart::new("submission");
+    if let Some(url) = &settings.submission_url {
+        element.push_attribute(("action", url.as_str()));
+        element.push_attribute(("method", "post"));
+    }
+    if let Some(key) = &settings.public_key {
+        element.push_attribute(("base64RsaPublicKey", key.as_str()));
+    }
+    if let Some(value) = &settings.auto_send {
+        element.push_attribute(("orx:auto-send", value.as_str()));
+    }
+    if let Some(value) = &settings.auto_delete {
+        element.push_attribute(("orx:auto-delete", value.as_str()));
+    }
+    w.write_event(Event::Empty(element))?;
+    Ok(())
+}
 
 // --- Translations (itext) ---------------------------------------------------
 
@@ -587,6 +622,9 @@ fn write_bind(
             push_logic_attributes(&mut bind, question, &resolve, false, nodeset, ml);
         }
     }
+    if let Some(pixels) = question.parameter("max-pixels") {
+        bind.push_attribute(("orx:max-pixels", pixels));
+    }
     if let Some(save_to) = &question.save_to {
         bind.push_attribute(("entities:saveto", save_to.as_str()));
     }
@@ -841,73 +879,99 @@ fn reference_xpath(context: &[Step], target: &[Step]) -> String {
     }
 }
 
-// --- setvalue actions (trigger column) --------------------------------------
+// --- trigger-driven actions (trigger column) --------------------------------
 
-/// A `setvalue` action injected into a trigger node's body control.
-struct SetValue {
+/// An action injected into a trigger node's body control, fired on its change:
+/// `<setvalue>` (with a value) or `<odk:setgeopoint>` (background-geopoint).
+#[derive(Clone)]
+struct TriggerAction {
+    /// Action element name (`setvalue` or `odk:setgeopoint`).
+    element: &'static str,
     /// Target node the action writes to (absolute XPath).
     reference: String,
-    /// Expression evaluated when the trigger node changes.
-    value: String,
+    /// Expression to evaluate; `None` for `setgeopoint` (takes no value).
+    value: Option<String>,
 }
 
-/// Map each trigger node name to the `setvalue` actions fired on its change.
+/// Whether a question is a `background-geopoint` (geopoint bind, no control and
+/// no model-level action — it fires via a trigger instead).
+fn is_background_geopoint(q: &Question) -> bool {
+    matches!(&q.kind, Kind::Builtin(b)
+        if b.bind_type == "geopoint" && b.control.is_none() && b.action.is_none())
+}
+
+/// Map each trigger node name to the actions fired when it changes.
 ///
-/// A question with both a `trigger` and a `calculation` recalculates via an
-/// `odk:setvalue` on the triggering node, instead of a calculate bind.
-fn collect_setvalues(
+/// A `trigger` question recalculates via a `setvalue` on the triggering node
+/// (instead of a calculate bind), or captures a point via `setgeopoint` for a
+/// triggered `background-geopoint`.
+fn collect_trigger_actions(
     nodes: &[Node],
     index: &HashMap<String, Vec<Step>>,
-) -> HashMap<String, Vec<SetValue>> {
-    let mut map: HashMap<String, Vec<SetValue>> = HashMap::new();
-    gather_setvalues(nodes, index, &mut map);
+) -> HashMap<String, Vec<TriggerAction>> {
+    let mut map: HashMap<String, Vec<TriggerAction>> = HashMap::new();
+    gather_trigger_actions(nodes, index, &mut map);
     map
 }
 
-fn gather_setvalues(
+fn gather_trigger_actions(
     nodes: &[Node],
     index: &HashMap<String, Vec<Step>>,
-    map: &mut HashMap<String, Vec<SetValue>>,
+    map: &mut HashMap<String, Vec<TriggerAction>>,
 ) {
     for node in nodes {
         match node {
             Node::Question(q) => {
-                let (Some(trigger), Some(calc)) = (&q.trigger, &q.calculation) else {
+                let Some(trigger) = &q.trigger else {
                     continue;
                 };
-                let empty: Vec<Step> = Vec::new();
-                let context = index.get(&q.name).unwrap_or(&empty);
-                let value =
-                    rewrite_references(calc, |name: &str| resolve_ref(index, context, name));
                 let Some(reference) = resolve_ref(index, &[], &q.name) else {
                     continue;
                 };
+                let action = if is_background_geopoint(q) {
+                    TriggerAction {
+                        element: "odk:setgeopoint",
+                        reference,
+                        value: None,
+                    }
+                } else if let Some(calc) = &q.calculation {
+                    let empty: Vec<Step> = Vec::new();
+                    let context = index.get(&q.name).unwrap_or(&empty);
+                    let value =
+                        rewrite_references(calc, |name: &str| resolve_ref(index, context, name));
+                    TriggerAction {
+                        element: "setvalue",
+                        reference,
+                        value: Some(value),
+                    }
+                } else {
+                    continue;
+                };
                 for target in rustxform_expr::reference_names(trigger) {
-                    map.entry(target).or_default().push(SetValue {
-                        reference: reference.clone(),
-                        value: value.clone(),
-                    });
+                    map.entry(target).or_default().push(action.clone());
                 }
             }
-            Node::Group(c) | Node::Repeat(c) => gather_setvalues(&c.children, index, map),
+            Node::Group(c) | Node::Repeat(c) => gather_trigger_actions(&c.children, index, map),
         }
     }
 }
 
-/// Emit the `setvalue` actions registered for the node named `name`.
-fn write_setvalues(
+/// Emit the trigger-driven actions registered for the node named `name`.
+fn write_trigger_actions(
     w: &mut W,
     name: &str,
-    setvalues: &HashMap<String, Vec<SetValue>>,
+    actions: &HashMap<String, Vec<TriggerAction>>,
 ) -> Result<(), XformError> {
-    let Some(list) = setvalues.get(name) else {
+    let Some(list) = actions.get(name) else {
         return Ok(());
     };
-    for sv in list {
-        let mut element = BytesStart::new("setvalue");
-        element.push_attribute(("ref", sv.reference.as_str()));
+    for action in list {
+        let mut element = BytesStart::new(action.element);
+        element.push_attribute(("ref", action.reference.as_str()));
         element.push_attribute(("event", "xforms-value-changed"));
-        element.push_attribute(("value", sv.value.as_str()));
+        if let Some(value) = &action.value {
+            element.push_attribute(("value", value.as_str()));
+        }
         w.write_event(Event::Empty(element))?;
     }
     Ok(())
@@ -923,8 +987,8 @@ struct BodyCtx<'a> {
     index: &'a HashMap<String, Vec<Step>>,
     /// OSM tag lists, consumed by `osm` upload controls.
     osm: &'a [ChoiceList],
-    /// `setvalue` actions keyed by the trigger node they attach to.
-    setvalues: &'a HashMap<String, Vec<SetValue>>,
+    /// Trigger-driven actions keyed by the trigger node they attach to.
+    actions: &'a HashMap<String, Vec<TriggerAction>>,
 }
 
 /// Emit body controls for `nodes` under `parent`.
@@ -1019,7 +1083,7 @@ fn write_osm(
     w.write_event(Event::Start(element))?;
     write_label(w, question, reference, ctx.ml, ctx.index)?;
     write_hint(w, question, reference, ctx.ml)?;
-    write_setvalues(w, &question.name, ctx.setvalues)?;
+    write_trigger_actions(w, &question.name, ctx.actions)?;
 
     if let Some(tags) = ctx.osm.iter().find(|t| t.name == tagset) {
         for tag in &tags.items {
@@ -1056,7 +1120,7 @@ fn control(
     w.write_event(Event::Start(element))?;
     write_label(w, question, reference, ctx.ml, ctx.index)?;
     write_hint(w, question, reference, ctx.ml)?;
-    write_setvalues(w, &question.name, ctx.setvalues)?;
+    write_trigger_actions(w, &question.name, ctx.actions)?;
     close(w, tag)?;
     Ok(())
 }
@@ -1080,7 +1144,7 @@ fn write_range(
     w.write_event(Event::Start(element))?;
     write_label(w, question, reference, ctx.ml, ctx.index)?;
     write_hint(w, question, reference, ctx.ml)?;
-    write_setvalues(w, &question.name, ctx.setvalues)?;
+    write_trigger_actions(w, &question.name, ctx.actions)?;
     close(w, "range")?;
     Ok(())
 }
@@ -1110,7 +1174,7 @@ fn write_select(
     w.write_event(Event::Start(element))?;
     write_label(w, question, reference, ctx.ml, ctx.index)?;
     write_hint(w, question, reference, ctx.ml)?;
-    write_setvalues(w, &question.name, ctx.setvalues)?;
+    write_trigger_actions(w, &question.name, ctx.actions)?;
 
     // A `choice_filter` adds an XPath predicate to the itemset nodeset.
     let predicate = question
@@ -1258,6 +1322,58 @@ fn uses_last_saved(nodes: &[Node]) -> bool {
         }
         Node::Group(c) | Node::Repeat(c) => uses_last_saved(&c.children),
     })
+}
+
+/// Collect unique dataset names referenced by `pulldata('name', …)` in any
+/// question expression; each becomes a `jr://file-csv/<name>.csv` instance.
+fn collect_pulldata(nodes: &[Node]) -> Vec<String> {
+    let mut names = Vec::new();
+    gather_pulldata(nodes, &mut names);
+    names
+}
+
+fn gather_pulldata(nodes: &[Node], names: &mut Vec<String>) {
+    for node in nodes {
+        match node {
+            Node::Question(q) => {
+                for expr in [
+                    &q.calculation,
+                    &q.relevant,
+                    &q.constraint,
+                    &q.required,
+                    &q.readonly,
+                    &q.choice_filter,
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    pulldata_names(expr, names);
+                }
+            }
+            Node::Group(c) | Node::Repeat(c) => gather_pulldata(&c.children, names),
+        }
+    }
+}
+
+/// Extract the first (dataset) argument of each `pulldata('name', …)` call.
+fn pulldata_names(expr: &str, names: &mut Vec<String>) {
+    let mut rest = expr;
+    while let Some(index) = rest.find("pulldata(") {
+        rest = &rest[index + "pulldata(".len()..];
+        let trimmed = rest.trim_start();
+        let Some(quote) = trimmed.chars().next() else {
+            break;
+        };
+        if quote == '\'' || quote == '"' {
+            let after = &trimmed[quote.len_utf8()..];
+            if let Some(end) = after.find(quote) {
+                let name = after[..end].to_owned();
+                if !names.contains(&name) {
+                    names.push(name);
+                }
+            }
+        }
+    }
 }
 
 /// Write a control's `<hint>` when present.
