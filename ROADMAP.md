@@ -95,6 +95,10 @@ shape; unlimited languages per form).
 Also done (v2): **Entities** (create-entity forms), **xform2json** (reverse
 parser, flat subset), **ODK Validate** integration (`--odk-validate <jar>`).
 
+Parity widgets: **rank**, **background-audio** (`odk:recordaudio`),
+**start-geopoint** (`odk:setgeopoint`), **audit**. Cross-checked against
+pyxform: all supported forms are byte-identical after C14N.
+
 Intentionally out of scope: `choices` header-coherence warnings (would flag
 legitimate cascade columns), entity update/`create_if`/`update_if`, and
 reconstructing groups/itext/choices in xform2json. Possible next: published
