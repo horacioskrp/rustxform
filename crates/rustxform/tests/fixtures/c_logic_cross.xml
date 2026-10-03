@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms" xmlns:odk="http://www.opendatakit.org/xforms">
+  <h:head>
+    <h:title>F</h:title>
+    <model odk:xforms-version="1.0.0">
+      <instance>
+        <data id="f">
+          <age/>
+          <gg>
+            <nm/>
+          </gg>
+          <dbl/>
+          <meta>
+            <instanceID/>
+          </meta>
+        </data>
+      </instance>
+      <bind nodeset="/data/age" type="int" constraint=". &gt;= 0"/>
+      <bind nodeset="/data/gg/nm" type="string" relevant=" /data/age  &gt;= 18"/>
+      <bind nodeset="/data/dbl" type="int" calculate=" /data/age  * 2"/>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" jr:preload="uid"/>
+    </model>
+  </h:head>
+  <h:body>
+    <input ref="/data/age">
+      <label>Age</label>
+    </input>
+    <group ref="/data/gg">
+      <label>GG</label>
+      <input ref="/data/gg/nm">
+        <label>Nm</label>
+      </input>
+    </group>
+    <input ref="/data/dbl">
+      <label>Dbl</label>
+    </input>
+  </h:body>
+</h:html>

@@ -1,0 +1,62 @@
+<?xml version="1.0"?>
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms" xmlns:odk="http://www.opendatakit.org/xforms">
+  <h:head>
+    <h:title>F</h:title>
+    <model odk:xforms-version="1.0.0">
+      <instance>
+        <data id="f">
+          <st/>
+          <ci/>
+          <meta>
+            <instanceID/>
+          </meta>
+        </data>
+      </instance>
+      <instance id="st">
+        <root>
+          <item>
+            <name>tx</name>
+            <label>TX</label>
+          </item>
+          <item>
+            <name>ca</name>
+            <label>CA</label>
+          </item>
+        </root>
+      </instance>
+      <instance id="ci">
+        <root>
+          <item>
+            <name>au</name>
+            <label>Austin</label>
+            <st>tx</st>
+          </item>
+          <item>
+            <name>la</name>
+            <label>LA</label>
+            <st>ca</st>
+          </item>
+        </root>
+      </instance>
+      <bind nodeset="/data/st" type="string"/>
+      <bind nodeset="/data/ci" type="string"/>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" jr:preload="uid"/>
+    </model>
+  </h:head>
+  <h:body>
+    <select1 ref="/data/st">
+      <label>St</label>
+      <itemset nodeset="instance('st')/root/item">
+        <value ref="name"/>
+        <label ref="label"/>
+      </itemset>
+    </select1>
+    <select1 ref="/data/ci">
+      <label>Ci</label>
+      <itemset nodeset="instance('ci')/root/item[st= /data/st ]">
+        <value ref="name"/>
+        <label ref="label"/>
+      </itemset>
+    </select1>
+  </h:body>
+</h:html>

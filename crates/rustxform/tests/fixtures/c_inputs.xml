@@ -1,0 +1,68 @@
+<?xml version="1.0"?>
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms" xmlns:odk="http://www.opendatakit.org/xforms">
+  <h:head>
+    <h:title>F</h:title>
+    <model odk:xforms-version="1.0.0">
+      <instance>
+        <data id="f">
+          <t/>
+          <i/>
+          <d/>
+          <da/>
+          <ti/>
+          <dt/>
+          <gp/>
+          <gt/>
+          <gs/>
+          <bc/>
+          <meta>
+            <instanceID/>
+          </meta>
+        </data>
+      </instance>
+      <bind nodeset="/data/t" type="string"/>
+      <bind nodeset="/data/i" type="int"/>
+      <bind nodeset="/data/d" type="decimal"/>
+      <bind nodeset="/data/da" type="date"/>
+      <bind nodeset="/data/ti" type="time"/>
+      <bind nodeset="/data/dt" type="dateTime"/>
+      <bind nodeset="/data/gp" type="geopoint"/>
+      <bind nodeset="/data/gt" type="geotrace"/>
+      <bind nodeset="/data/gs" type="geoshape"/>
+      <bind nodeset="/data/bc" type="barcode"/>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" jr:preload="uid"/>
+    </model>
+  </h:head>
+  <h:body>
+    <input ref="/data/t">
+      <label>T</label>
+    </input>
+    <input ref="/data/i">
+      <label>I</label>
+    </input>
+    <input ref="/data/d">
+      <label>D</label>
+    </input>
+    <input ref="/data/da">
+      <label>Da</label>
+    </input>
+    <input ref="/data/ti">
+      <label>Ti</label>
+    </input>
+    <input ref="/data/dt">
+      <label>Dt</label>
+    </input>
+    <input ref="/data/gp">
+      <label>Gp</label>
+    </input>
+    <input ref="/data/gt">
+      <label>Gt</label>
+    </input>
+    <input ref="/data/gs">
+      <label>Gs</label>
+    </input>
+    <input ref="/data/bc">
+      <label>Bc</label>
+    </input>
+  </h:body>
+</h:html>

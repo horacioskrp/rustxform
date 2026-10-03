@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms" xmlns:odk="http://www.opendatakit.org/xforms">
+  <h:head>
+    <h:title>F</h:title>
+    <model odk:xforms-version="1.0.0">
+      <instance>
+        <data id="f">
+          <s/>
+          <e/>
+          <td/>
+          <dv/>
+          <un/>
+          <q/>
+          <meta>
+            <instanceID/>
+          </meta>
+        </data>
+      </instance>
+      <bind nodeset="/data/s" jr:preload="timestamp" type="dateTime" jr:preloadParams="start"/>
+      <bind nodeset="/data/e" jr:preload="timestamp" type="dateTime" jr:preloadParams="end"/>
+      <bind nodeset="/data/td" jr:preload="date" type="date" jr:preloadParams="today"/>
+      <bind nodeset="/data/dv" jr:preload="property" type="string" jr:preloadParams="deviceid"/>
+      <bind nodeset="/data/un" jr:preload="property" type="string" jr:preloadParams="username"/>
+      <bind nodeset="/data/q" type="string"/>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" jr:preload="uid"/>
+    </model>
+  </h:head>
+  <h:body>
+    <input ref="/data/q">
+      <label>Q</label>
+    </input>
+  </h:body>
+</h:html>

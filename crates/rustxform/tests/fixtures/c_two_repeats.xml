@@ -1,0 +1,48 @@
+<?xml version="1.0"?>
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms" xmlns:odk="http://www.opendatakit.org/xforms">
+  <h:head>
+    <h:title>F</h:title>
+    <model odk:xforms-version="1.0.0">
+      <instance>
+        <data id="f">
+          <ra jr:template="">
+            <a/>
+          </ra>
+          <ra>
+            <a/>
+          </ra>
+          <rb jr:template="">
+            <b/>
+          </rb>
+          <rb>
+            <b/>
+          </rb>
+          <meta>
+            <instanceID/>
+          </meta>
+        </data>
+      </instance>
+      <bind nodeset="/data/ra/a" type="string"/>
+      <bind nodeset="/data/rb/b" type="int"/>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" jr:preload="uid"/>
+    </model>
+  </h:head>
+  <h:body>
+    <group ref="/data/ra">
+      <label>RA</label>
+      <repeat nodeset="/data/ra">
+        <input ref="/data/ra/a">
+          <label>A</label>
+        </input>
+      </repeat>
+    </group>
+    <group ref="/data/rb">
+      <label>RB</label>
+      <repeat nodeset="/data/rb">
+        <input ref="/data/rb/b">
+          <label>B</label>
+        </input>
+      </repeat>
+    </group>
+  </h:body>
+</h:html>

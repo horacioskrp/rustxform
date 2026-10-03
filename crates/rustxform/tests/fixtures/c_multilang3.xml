@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms" xmlns:odk="http://www.opendatakit.org/xforms">
+  <h:head>
+    <h:title>F</h:title>
+    <model odk:xforms-version="1.0.0">
+      <itext>
+        <translation lang="English (en)" default="true()">
+          <text id="/data/n:label">
+            <value>Name</value>
+          </text>
+          <text id="/data/n:hint">
+            <value>H</value>
+          </text>
+        </translation>
+        <translation lang="French (fr)">
+          <text id="/data/n:label">
+            <value>Nom</value>
+          </text>
+          <text id="/data/n:hint">
+            <value>I</value>
+          </text>
+        </translation>
+        <translation lang="Spanish (es)">
+          <text id="/data/n:label">
+            <value>Nombre</value>
+          </text>
+          <text id="/data/n:hint">
+            <value>P</value>
+          </text>
+        </translation>
+      </itext>
+      <instance>
+        <data id="f">
+          <n/>
+          <meta>
+            <instanceID/>
+          </meta>
+        </data>
+      </instance>
+      <bind nodeset="/data/n" type="string"/>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" jr:preload="uid"/>
+    </model>
+  </h:head>
+  <h:body>
+    <input ref="/data/n">
+      <label ref="jr:itext('/data/n:label')"/>
+      <hint ref="jr:itext('/data/n:hint')"/>
+    </input>
+  </h:body>
+</h:html>

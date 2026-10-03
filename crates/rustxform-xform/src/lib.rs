@@ -1055,6 +1055,9 @@ fn write_output_label(
     index: &HashMap<String, Vec<Step>>,
 ) -> Result<(), XformError> {
     open(w, "label")?;
+    // The reference compiler pads output-bearing labels with a leading and
+    // trailing space around the mixed content.
+    w.write_event(Event::Text(BytesText::new(" ")))?;
     let mut rest = text;
     while let Some(start) = rest.find("${") {
         let (literal, tail) = rest.split_at(start);
@@ -1084,6 +1087,7 @@ fn write_output_label(
     if !rest.is_empty() {
         w.write_event(Event::Text(BytesText::new(rest)))?;
     }
+    w.write_event(Event::Text(BytesText::new(" ")))?;
     close(w, "label")?;
     Ok(())
 }

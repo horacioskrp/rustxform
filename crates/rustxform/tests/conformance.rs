@@ -1,10 +1,13 @@
 //! Conformance tests.
 //!
-//! Phase 0 verifies the oracle machinery itself (canonicalization and diff).
-//! Fixture-driven tests are `#[ignore]`d until Phase 1 implements real
-//! conversion and the golden XForm is verified.
+//! The oracle self-tests check the canonicalization/diff machinery. The corpus
+//! runner compiles every `fixtures/<name>.md` and compares it to the golden
+//! `fixtures/<name>.xml` produced by the reference compiler.
 
 mod common;
+
+use std::fs;
+use std::path::PathBuf;
 
 use common::{assert_xform_eq, canonicalize, xform_diff};
 use rustxform::{convert_csv, convert_markdown, convert_xlsx};
@@ -43,48 +46,62 @@ fn skeleton_is_well_formed_xform() {
     assert!(xform.contains("<model"));
 }
 
-/// Compile `fixtures/<name>.md` and compare to `fixtures/<name>.xml`.
-macro_rules! golden {
-    ($test:ident, $name:literal) => {
-        #[test]
-        fn $test() {
-            let md = include_str!(concat!("fixtures/", $name, ".md"));
-            let expected = include_str!(concat!("fixtures/", $name, ".xml"));
-            let actual = convert_markdown(md).expect("conversion succeeds");
-            assert_xform_eq(expected, &actual);
-        }
-    };
+/// The fixtures directory (`crates/rustxform/tests/fixtures`).
+fn fixtures_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
-golden!(conformance_simple_text_form, "simple");
-golden!(conformance_choices_form, "choices");
-golden!(conformance_types_and_metadata_form, "types");
-golden!(conformance_groups_and_repeats_form, "groups");
-golden!(conformance_logic_and_references_form, "logic");
-golden!(conformance_multilingual_form, "multi");
-golden!(conformance_advanced_columns_form, "advanced");
-golden!(conformance_media_label_form, "media");
-golden!(conformance_default_values_form, "defaults");
-golden!(conformance_deferred_features_form, "deferred");
-golden!(conformance_select_from_file_form, "ext");
-golden!(conformance_last_saved_form, "lastsaved");
-golden!(conformance_multilingual_messages_form, "mlmsg");
-golden!(conformance_cascading_select_form, "cascade");
-golden!(conformance_multilingual_media_form, "mmedia");
-golden!(conformance_entities_form, "entity");
-golden!(conformance_rank_form, "rank");
-golden!(conformance_background_audio_form, "bgaudio");
-golden!(conformance_start_geopoint_form, "startgeo");
-golden!(conformance_audit_form, "audit");
-golden!(conformance_entity_update_form, "eupd");
-golden!(conformance_xml_external_form, "xmlexternal");
-golden!(conformance_osm_form, "osm");
-golden!(conformance_entity_create_if_form, "eci");
-golden!(conformance_entity_update_if_form, "eui");
-golden!(conformance_range_default_form, "rangedefault");
-golden!(conformance_file_form, "file");
-golden!(conformance_phone_number_form, "phonenumber");
-golden!(conformance_empty_label_with_hint_form, "phonenolabel");
+/// Every `<name>` that has both a `.md` input and a `.xml` golden, sorted.
+fn golden_names(dir: &PathBuf) -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(dir)
+        .expect("fixtures dir")
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let path = entry.path();
+            if path.extension()? != "md" {
+                return None;
+            }
+            let name = path.file_stem()?.to_str()?.to_owned();
+            dir.join(format!("{name}.xml")).exists().then_some(name)
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+/// Corpus runner: compile each Markdown fixture and compare to its golden.
+#[test]
+fn golden_fixtures_match_reference() {
+    let dir = fixtures_dir();
+    let names = golden_names(&dir);
+    assert!(
+        names.len() >= 50,
+        "expected the full corpus, found only {}",
+        names.len()
+    );
+
+    let mut failures = Vec::new();
+    for name in &names {
+        let md = fs::read_to_string(dir.join(format!("{name}.md"))).expect("read .md");
+        let expected = fs::read_to_string(dir.join(format!("{name}.xml"))).expect("read .xml");
+        match convert_markdown(&md) {
+            Ok(actual) => {
+                if let Some(diff) = xform_diff(&expected, &actual) {
+                    failures.push(format!("[{name}]\n{diff}"));
+                }
+            }
+            Err(error) => failures.push(format!("[{name}] conversion error: {error}")),
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "{} of {} fixtures differ from the golden:\n{}",
+        failures.len(),
+        names.len(),
+        failures.join("\n")
+    );
+}
 
 #[test]
 fn xlsx_reader_matches_markdown_golden() {
