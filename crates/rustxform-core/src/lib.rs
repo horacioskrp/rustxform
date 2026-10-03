@@ -274,6 +274,8 @@ pub struct Survey {
     pub languages: Vec<String>,
     /// Entities declaration from the `entities` sheet, if any.
     pub entity: Option<Entity>,
+    /// Whether an `audit` metadata question is present.
+    pub audit: bool,
 }
 
 impl Survey {

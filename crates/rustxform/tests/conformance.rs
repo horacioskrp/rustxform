@@ -75,6 +75,7 @@ golden!(conformance_entities_form, "entity");
 golden!(conformance_rank_form, "rank");
 golden!(conformance_background_audio_form, "bgaudio");
 golden!(conformance_start_geopoint_form, "startgeo");
+golden!(conformance_audit_form, "audit");
 
 #[test]
 fn xlsx_reader_matches_markdown_golden() {

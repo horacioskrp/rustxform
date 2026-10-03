@@ -33,6 +33,7 @@ pub fn workbook_to_survey(workbook: &Workbook) -> Result<Survey, ParseError> {
     }
     if let Some(sheet) = workbook.sheet("survey") {
         survey.children = parse_nodes(sheet);
+        survey.audit = extract_audit(&mut survey.children);
     }
     if let Some(sheet) = workbook.sheet("entities") {
         survey.entity = parse_entity(sheet);
@@ -40,6 +41,21 @@ pub fn workbook_to_survey(workbook: &Workbook) -> Result<Survey, ParseError> {
     survey.languages = collect_languages(workbook.sheet("survey"), workbook.sheet("choices"));
 
     Ok(survey)
+}
+
+/// Remove a top-level `audit` metadata question, returning whether one was
+/// present (it moves under `meta` at emission time).
+fn extract_audit(children: &mut Vec<Node>) -> bool {
+    let position = children.iter().position(|node| {
+        matches!(node, Node::Question(q) if matches!(&q.kind, Kind::Unknown(t) if t == "audit"))
+    });
+    match position {
+        Some(i) => {
+            children.remove(i);
+            true
+        }
+        None => false,
+    }
 }
 
 /// Read the single-row `entities` sheet into an [`Entity`].

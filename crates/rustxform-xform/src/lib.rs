@@ -322,6 +322,9 @@ fn write_primary_instance(w: &mut W, survey: &Survey, form_id: &str) -> Result<(
         w.write_event(Event::Empty(BytesStart::new("label")))?;
         close(w, "entity")?;
     }
+    if survey.audit {
+        w.write_event(Event::Empty(BytesStart::new("audit")))?;
+    }
     w.write_event(Event::Empty(BytesStart::new("instanceID")))?;
     if survey.settings.instance_name.is_some() {
         w.write_event(Event::Empty(BytesStart::new("instanceName")))?;
@@ -643,6 +646,13 @@ fn flag_value(raw: Option<&str>, resolve: &impl Fn(&str) -> Option<String>) -> O
 /// Write the `meta` binds: the fixed `instanceID`, and `instanceName` when a
 /// form `instance_name` is set.
 fn write_meta_binds(w: &mut W, survey: &Survey) -> Result<(), XformError> {
+    if survey.audit {
+        let mut bind = BytesStart::new("bind");
+        bind.push_attribute(("nodeset", format!("/{ROOT}/meta/audit").as_str()));
+        bind.push_attribute(("type", "binary"));
+        w.write_event(Event::Empty(bind))?;
+    }
+
     let mut bind = BytesStart::new("bind");
     bind.push_attribute(("nodeset", format!("/{ROOT}/meta/instanceID").as_str()));
     bind.push_attribute(("type", "string"));
