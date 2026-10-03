@@ -151,6 +151,11 @@ FORMS = {
     "c_setvalue": {"survey": [["type", "name", "label", "calculation", "trigger"],
         ["integer", "a", "A", "", ""],
         ["integer", "b", "B", D + "{a} * 2", D + "{a}"]], "settings": S},
+    "c_or_other": {"survey": [["type", "name", "label"],
+        ["select_one yn or_other", "s", "S"]],
+        "choices": [["list_name", "name", "label"], ["yn", "y", "Yes"], ["yn", "n", "No"]], "settings": S},
+    "c_guidance": {"survey": [["type", "name", "label", "guidance_hint"],
+        ["text", "q", "Q", "Fill your legal name"]], "settings": S},
 }
 
 

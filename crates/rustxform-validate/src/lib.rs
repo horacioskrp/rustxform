@@ -289,6 +289,7 @@ fn is_known_survey_column(column: &str) -> bool {
             | "name"
             | "label"
             | "hint"
+            | "guidance_hint"
             | "media"
             | "image"
             | "audio"

@@ -1,0 +1,48 @@
+<?xml version="1.0"?>
+<h:html xmlns="http://www.w3.org/2002/xforms" xmlns:h="http://www.w3.org/1999/xhtml" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:orx="http://openrosa.org/xforms" xmlns:odk="http://www.opendatakit.org/xforms">
+  <h:head>
+    <h:title>F</h:title>
+    <model odk:xforms-version="1.0.0">
+      <instance>
+        <data id="f">
+          <s/>
+          <s_other/>
+          <meta>
+            <instanceID/>
+          </meta>
+        </data>
+      </instance>
+      <instance id="yn">
+        <root>
+          <item>
+            <name>y</name>
+            <label>Yes</label>
+          </item>
+          <item>
+            <name>n</name>
+            <label>No</label>
+          </item>
+          <item>
+            <name>other</name>
+            <label>Other</label>
+          </item>
+        </root>
+      </instance>
+      <bind nodeset="/data/s" type="string"/>
+      <bind nodeset="/data/s_other" type="string" relevant="selected(../s, 'other')"/>
+      <bind nodeset="/data/meta/instanceID" type="string" readonly="true()" jr:preload="uid"/>
+    </model>
+  </h:head>
+  <h:body>
+    <select1 ref="/data/s">
+      <label>S</label>
+      <itemset nodeset="instance('yn')/root/item">
+        <value ref="name"/>
+        <label ref="label"/>
+      </itemset>
+    </select1>
+    <input ref="/data/s_other">
+      <label>Specify other.</label>
+    </input>
+  </h:body>
+</h:html>

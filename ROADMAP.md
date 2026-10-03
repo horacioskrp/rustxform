@@ -113,11 +113,11 @@ C14N) before it is checked off.
 - [x] `hidden` type (string bind, no body control)
 - [x] `trigger` + `calculation` → `odk:setvalue` dynamic recalculation
       (`event="xforms-value-changed"`, injected into the trigger node's control)
-- [ ] `or_other` on `select_one` / `select_multiple` (synthetic "other" choice +
-      linked text question + bind)
+- [x] `or_other` on `select_one` / `select_multiple` (synthetic "other" choice +
+      linked text question + `selected(../q, 'other')` relevant; single-language)
+- [x] `guidance_hint` (itext `<value form="guidance">`, forces itext when present)
 - [ ] Encrypted forms: `public_key` → `<submission base64RsaPublicKey=…>`
 - [ ] Submission settings: `submission_url`, `auto_send`, `auto_delete`
-- [ ] `guidance_hint` (itext `…/guidance` form)
 - [ ] Media/appearance params: image `max-pixels`, audio `quality`,
       `signature`/`annotate`/`draw`, geopoint capture-accuracy
 - [ ] `pulldata()` + CSV external instances (`jr://file-csv/…`)

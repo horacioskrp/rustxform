@@ -32,8 +32,10 @@ pub fn workbook_to_survey(workbook: &Workbook) -> Result<Survey, ParseError> {
         survey.choices = parse_choices(sheet);
     }
     if let Some(sheet) = workbook.sheet("survey") {
-        survey.children = parse_nodes(sheet);
+        let (children, or_other_lists) = parse_nodes(sheet);
+        survey.children = children;
         survey.audit = extract_audit(&mut survey.children);
+        add_or_other_choices(&mut survey.choices, &or_other_lists);
     }
     if let Some(sheet) = workbook.sheet("osm") {
         survey.osm_tags = parse_choices(sheet);
@@ -73,6 +75,25 @@ fn extract_audit(children: &mut Vec<Node>) -> bool {
             true
         }
         None => false,
+    }
+}
+
+/// Append an `other`/`Other` option to each list used by an `… or_other`
+/// select, unless one is already present.
+fn add_or_other_choices(choices: &mut [ChoiceList], lists: &[String]) {
+    for list in lists {
+        if let Some(choice_list) = choices.iter_mut().find(|c| &c.name == list) {
+            if !choice_list.items.iter().any(|item| item.name == "other") {
+                choice_list.items.push(Choice {
+                    name: "other".to_owned(),
+                    label: Localized {
+                        default: Some("Other".to_owned()),
+                        langs: Vec::new(),
+                    },
+                    extra: Vec::new(),
+                });
+            }
+        }
     }
 }
 
@@ -237,6 +258,7 @@ fn collect_languages(survey: Option<&Sheet>, choices: Option<&Sheet>) -> Vec<Str
             &[
                 "label",
                 "hint",
+                "guidance_hint",
                 "constraint_message",
                 "required_message",
                 "media",
@@ -256,9 +278,9 @@ enum Frame {
 }
 
 /// Read the `survey` sheet rows into a node tree, honoring group/repeat markers.
-fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
+fn parse_nodes(sheet: &Sheet) -> (Vec<Node>, Vec<String>) {
     let Some((header, data)) = sheet.rows.split_first() else {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     };
     let column = |name: &str| header.iter().position(|h| h == name);
     let type_col = column("type");
@@ -280,10 +302,13 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
     let count_col = column("repeat_count");
     let label_cols = loc_columns(header, "label");
     let hint_cols = loc_columns(header, "hint");
+    let guidance_cols = loc_columns(header, "guidance_hint");
     let media_cols = media_columns(header);
 
     let mut root: Vec<Node> = Vec::new();
     let mut stack: Vec<Frame> = Vec::new();
+    // Choice lists that need a synthetic `other` option (from `… or_other`).
+    let mut or_other_lists: Vec<String> = Vec::new();
 
     for row in data {
         let cell = |col: Option<usize>| col.and_then(|i| row.get(i)).map_or("", String::as_str);
@@ -318,6 +343,7 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
                     name: cell(name_col).to_owned(),
                     label: localized(&label_cols, row),
                     hint: localized(&hint_cols, row),
+                    guidance_hint: localized(&guidance_cols, row),
                     appearance: optional(cell(appearance_col)),
                     calculation: optional(cell(calc_col)),
                     relevant: optional(cell(relevant_col)),
@@ -341,7 +367,42 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
                         question.hint.default = Some("Enter numbers only.".to_owned());
                     }
                 }
+                let qname = question.name.clone();
                 place(&mut root, &mut stack, Node::Question(question));
+
+                // `select_* <list> or_other`: add an `other` option to the list
+                // and a sibling text field relevant only when `other` is chosen.
+                if let ["select_one" | "select_multiple", list, "or_other"] =
+                    type_token.split_whitespace().collect::<Vec<_>>().as_slice()
+                {
+                    or_other_lists.push((*list).to_owned());
+                    let other = Question {
+                        kind: resolve_builtin("text")
+                            .map_or_else(|| Kind::Unknown("text".to_owned()), Kind::Builtin),
+                        name: format!("{qname}_other"),
+                        label: Localized {
+                            default: Some("Specify other.".to_owned()),
+                            langs: Vec::new(),
+                        },
+                        hint: Localized::default(),
+                        guidance_hint: Localized::default(),
+                        appearance: None,
+                        calculation: None,
+                        relevant: Some(format!("selected(../{qname}, 'other')")),
+                        constraint: None,
+                        required: None,
+                        readonly: None,
+                        constraint_message: Localized::default(),
+                        required_message: Localized::default(),
+                        parameters: Vec::new(),
+                        media: Vec::new(),
+                        default: None,
+                        choice_filter: None,
+                        save_to: None,
+                        trigger: None,
+                    };
+                    place(&mut root, &mut stack, Node::Question(other));
+                }
             }
         }
     }
@@ -354,7 +415,7 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
         };
         place(&mut root, &mut stack, node);
     }
-    root
+    (root, or_other_lists)
 }
 
 /// Append a finished node to the innermost open container, or to the root.

@@ -167,6 +167,9 @@ pub struct Question {
     pub label: Localized,
     /// Hint text (single- or multi-language).
     pub hint: Localized,
+    /// `guidance_hint` text: a secondary hint rendered via an itext
+    /// `<value form="guidance">` (single- or multi-language).
+    pub guidance_hint: Localized,
     /// `appearance` column value, if any.
     pub appearance: Option<String>,
     /// Expression from the `calculation` column, if any.

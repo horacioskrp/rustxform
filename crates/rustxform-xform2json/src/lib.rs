@@ -175,6 +175,7 @@ fn to_question(p: Partial, binds: &HashMap<String, String>) -> Question {
             langs: Vec::new(),
         },
         hint: Localized::default(),
+        guidance_hint: Localized::default(),
         appearance: None,
         calculation: None,
         relevant: None,

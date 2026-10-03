@@ -70,7 +70,7 @@ pub fn survey_to_xform(survey: &Survey) -> Result<String, XformError> {
     } else {
         vec!["default"]
     };
-    if multilingual || any_media(&survey.children) {
+    if multilingual || any_media(&survey.children) || any_guidance(&survey.children) {
         write_itext(&mut w, survey, &itext_langs, multilingual)?;
     }
     write_primary_instance(&mut w, survey, form_id)?;
@@ -152,14 +152,36 @@ fn any_media(nodes: &[Node]) -> bool {
     })
 }
 
+/// Does any question anywhere in the tree carry a guidance hint?
+fn any_guidance(nodes: &[Node]) -> bool {
+    nodes.iter().any(|node| match node {
+        Node::Question(q) => !q.guidance_hint.is_empty(),
+        Node::Group(c) | Node::Repeat(c) => any_guidance(&c.children),
+    })
+}
+
 /// Whether a question's label is rendered via itext (multilingual or media).
 fn label_uses_itext(q: &Question, ml: bool) -> bool {
     (ml && q.label.is_multilingual()) || !q.media.is_empty()
 }
 
-/// Whether a question's hint is rendered via itext.
+/// Whether a question's hint is rendered via itext (multilingual, or when a
+/// guidance hint is present — which always goes through itext).
 fn hint_uses_itext(q: &Question, ml: bool) -> bool {
-    ml && q.hint.is_multilingual()
+    (ml && q.hint.is_multilingual()) || !q.guidance_hint.is_empty()
+}
+
+/// The itext value for a localizable field in the current language, or `None`
+/// when the field is empty.
+fn localized_value(loc: &Localized, lang: &str, ml: bool) -> Option<String> {
+    if loc.is_empty() {
+        return None;
+    }
+    if ml && loc.is_multilingual() {
+        Some(loc.for_lang(lang).unwrap_or_default().to_owned())
+    } else {
+        loc.single().map(str::to_owned)
+    }
 }
 
 /// Emit the `<itext>` block: one `<translation>` per language, choice texts
@@ -238,10 +260,13 @@ fn write_itext_questions(
                     write_label_text(w, &format!("{path}:label"), value, &q.media, lang, ml)?;
                 }
                 if hint_uses_itext(q, ml) {
-                    write_text(
+                    let hint = localized_value(&q.hint, lang, ml);
+                    let guidance = localized_value(&q.guidance_hint, lang, ml);
+                    write_hint_text(
                         w,
                         &format!("{path}:hint"),
-                        q.hint.for_lang(lang).unwrap_or_default(),
+                        hint.as_deref(),
+                        guidance.as_deref(),
                     )?;
                 }
             }
@@ -287,6 +312,31 @@ fn write_label_text(
         w.write_event(Event::Text(BytesText::new(&format!(
             "jr://{directory}/{file}"
         ))))?;
+        close(w, "value")?;
+    }
+    close(w, "text")?;
+    Ok(())
+}
+
+/// Emit a hint `<text id="..">` with an optional plain `<value>` and an
+/// optional `<value form="guidance">` (guidance hint).
+fn write_hint_text(
+    w: &mut W,
+    id: &str,
+    hint: Option<&str>,
+    guidance: Option<&str>,
+) -> Result<(), XformError> {
+    let mut text = BytesStart::new("text");
+    text.push_attribute(("id", id));
+    w.write_event(Event::Start(text))?;
+    if let Some(value) = hint {
+        text_element(w, "value", value)?;
+    }
+    if let Some(value) = guidance {
+        let mut element = BytesStart::new("value");
+        element.push_attribute(("form", "guidance"));
+        w.write_event(Event::Start(element))?;
+        w.write_event(Event::Text(BytesText::new(value)))?;
         close(w, "value")?;
     }
     close(w, "text")?;
