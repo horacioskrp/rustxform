@@ -1,10 +1,16 @@
 //! Parse an XForm back into the [`Survey`] model (the reverse direction).
 //!
-//! This reconstructs the common forward output: the form title and id, and a
-//! flat list of body questions with their inferred type, inline label and (for
-//! selects) choice-list id. Groups/repeats, `itext` translations, reconstructed
-//! choice lists and entities are not yet recovered — questions nested in groups
-//! are flattened. Use it to import or inspect an existing XForm.
+//! This reconstructs the form title and id, and the body questions with their
+//! inferred type, inline label and hint, `appearance`, and the full bind logic
+//! (`relevant` / `constraint` / `required` / `read_only` / `calculate` and the
+//! constraint/required messages), recovered as literal XPath. Because the
+//! forward emitter only rewrites `${…}` tokens and passes other expressions
+//! through unchanged, a flat single-language form round-trips byte-identically:
+//! `emit(xform_to_survey(emit(survey))) == emit(survey)`.
+//!
+//! Not yet recovered (questions nested in groups are flattened): group/repeat
+//! structure, `itext` translations, reconstructed choice lists, entities, and
+//! data-only nodes such as `calculate`. Use it to import or inspect an XForm.
 
 use std::collections::HashMap;
 
@@ -42,8 +48,21 @@ pub fn xform_to_survey(xml: &str) -> Result<Survey, Xform2JsonError> {
     Ok(survey)
 }
 
-/// `nodeset` → bind `type`, from the model binds.
-fn collect_binds(xml: &str) -> Result<HashMap<String, String>, Xform2JsonError> {
+/// A `<bind>`'s recovered attributes, keyed by nodeset in [`collect_binds`].
+#[derive(Default, Clone)]
+struct Bind {
+    ty: Option<String>,
+    relevant: Option<String>,
+    constraint: Option<String>,
+    required: Option<String>,
+    readonly: Option<String>,
+    calculate: Option<String>,
+    constraint_msg: Option<String>,
+    required_msg: Option<String>,
+}
+
+/// `nodeset` → its [`Bind`], from the model binds.
+fn collect_binds(xml: &str) -> Result<HashMap<String, Bind>, Xform2JsonError> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
     let mut binds = HashMap::new();
@@ -51,10 +70,20 @@ fn collect_binds(xml: &str) -> Result<HashMap<String, String>, Xform2JsonError> 
         match read(&mut reader)? {
             Event::Eof => break,
             Event::Start(e) | Event::Empty(e) if local_name(e.name().as_ref()) == "bind" => {
-                let nodeset = attr(&e, "nodeset");
-                let bind_type = attr(&e, "type");
-                if let (Some(nodeset), Some(bind_type)) = (nodeset, bind_type) {
-                    binds.insert(nodeset, bind_type);
+                if let Some(nodeset) = attr(&e, "nodeset") {
+                    binds.insert(
+                        nodeset,
+                        Bind {
+                            ty: attr(&e, "type"),
+                            relevant: attr(&e, "relevant"),
+                            constraint: attr(&e, "constraint"),
+                            required: attr(&e, "required"),
+                            readonly: attr(&e, "readonly"),
+                            calculate: attr(&e, "calculate"),
+                            constraint_msg: attr(&e, "constraintMsg"),
+                            required_msg: attr(&e, "requiredMsg"),
+                        },
+                    );
                 }
             }
             _ => {}
@@ -98,14 +127,16 @@ struct Partial {
     tag: String,
     reference: String,
     mediatype: Option<String>,
+    appearance: Option<String>,
     list: Option<String>,
     label: Option<String>,
+    hint: Option<String>,
 }
 
 /// Walk the body controls into a flat list of questions.
 fn collect_questions(
     xml: &str,
-    binds: &HashMap<String, String>,
+    binds: &HashMap<String, Bind>,
 ) -> Result<Vec<Question>, Xform2JsonError> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
@@ -113,6 +144,7 @@ fn collect_questions(
     let mut questions = Vec::new();
     let mut current: Option<Partial> = None;
     let mut in_label = false;
+    let mut in_hint = false;
     let mut in_itemset = false;
 
     loop {
@@ -125,8 +157,10 @@ fn collect_questions(
                         tag: name,
                         reference: attr(&e, "ref").unwrap_or_default(),
                         mediatype: attr(&e, "mediatype"),
+                        appearance: attr(&e, "appearance"),
                         list: None,
                         label: None,
+                        hint: None,
                     });
                 } else if name == "itemset" {
                     in_itemset = true;
@@ -135,6 +169,8 @@ fn collect_questions(
                     }
                 } else if name == "label" && current.is_some() && !in_itemset {
                     in_label = true;
+                } else if name == "hint" && current.is_some() {
+                    in_hint = true;
                 }
             }
             Event::Text(t) if in_label => {
@@ -142,8 +178,14 @@ fn collect_questions(
                     p.label = Some(t.unescape().map_err(xml_err)?.into_owned());
                 }
             }
+            Event::Text(t) if in_hint => {
+                if let Some(p) = current.as_mut() {
+                    p.hint = Some(t.unescape().map_err(xml_err)?.into_owned());
+                }
+            }
             Event::End(e) => match local_name(e.name().as_ref()).as_str() {
                 "label" => in_label = false,
+                "hint" => in_hint = false,
                 "itemset" => in_itemset = false,
                 name if CONTROLS.contains(&name) => {
                     if let Some(p) = current.take() {
@@ -159,37 +201,40 @@ fn collect_questions(
 }
 
 /// Build a [`Question`] from an assembled control and the binds.
-fn to_question(p: Partial, binds: &HashMap<String, String>) -> Question {
+fn to_question(p: Partial, binds: &HashMap<String, Bind>) -> Question {
     let name = p.reference.rsplit('/').next().unwrap_or("").to_owned();
-    let bind_type = binds
-        .get(&p.reference)
-        .map(String::as_str)
-        .unwrap_or("string");
+    let bind = binds.get(&p.reference).cloned().unwrap_or_default();
+    let bind_type = bind.ty.as_deref().unwrap_or("string");
     let kind = infer_kind(&p.tag, bind_type, p.list, p.mediatype.as_deref());
 
     Question {
         kind,
         name,
-        label: Localized {
-            default: p.label,
-            langs: Vec::new(),
-        },
-        hint: Localized::default(),
+        label: single_lang(p.label),
+        hint: single_lang(p.hint),
         guidance_hint: Localized::default(),
-        appearance: None,
-        calculation: None,
-        relevant: None,
-        constraint: None,
-        required: None,
-        readonly: None,
-        constraint_message: Localized::default(),
-        required_message: Localized::default(),
+        appearance: p.appearance,
+        calculation: bind.calculate,
+        relevant: bind.relevant,
+        constraint: bind.constraint,
+        required: bind.required,
+        readonly: bind.readonly,
+        constraint_message: single_lang(bind.constraint_msg),
+        required_message: single_lang(bind.required_msg),
         parameters: Vec::new(),
         media: Vec::new(),
         default: None,
         choice_filter: None,
         save_to: None,
         trigger: None,
+    }
+}
+
+/// Wrap an optional single-language string into a [`Localized`].
+fn single_lang(text: Option<String>) -> Localized {
+    Localized {
+        default: text,
+        langs: Vec::new(),
     }
 }
 
@@ -258,11 +303,17 @@ fn read(reader: &mut Reader<&[u8]>) -> Result<Event<'static>, Xform2JsonError> {
     reader.read_event().map(Event::into_owned).map_err(xml_err)
 }
 
-/// An attribute value as an owned `String`, if present.
+/// An attribute value as an owned, entity-decoded `String`, if present.
+///
+/// Decoding matters: a recovered `&gt;` must become `>` so the forward emitter
+/// re-escapes it once (not to `&amp;gt;`), keeping round-trips byte-identical.
 fn attr(e: &quick_xml::events::BytesStart<'_>, key: &str) -> Option<String> {
     e.attributes().flatten().find_map(|a| {
-        (local_name(a.key.as_ref()) == key)
-            .then(|| String::from_utf8_lossy(a.value.as_ref()).into_owned())
+        (local_name(a.key.as_ref()) == key).then(|| {
+            a.unescape_value()
+                .map(std::borrow::Cow::into_owned)
+                .unwrap_or_else(|_| String::from_utf8_lossy(a.value.as_ref()).into_owned())
+        })
     })
 }
 
@@ -333,5 +384,39 @@ mod tests {
                 file: None,
             }
         );
+    }
+
+    /// Compile markdown to an XForm, parse it back, re-emit, and return both
+    /// XForms. They must be byte-identical for the form to round-trip.
+    fn round_trip(md: &str) -> (String, String) {
+        let workbook = rustxform_reader::read_markdown(md).unwrap();
+        let survey = rustxform_parse::workbook_to_survey(&workbook).unwrap();
+        let first = rustxform_xform::survey_to_xform(&survey).unwrap();
+        let recovered = xform_to_survey(&first).unwrap();
+        let second = rustxform_xform::survey_to_xform(&recovered).unwrap();
+        (first, second)
+    }
+
+    #[test]
+    fn round_trips_flat_forms() {
+        let forms = [
+            // Question types with inline labels.
+            "| survey |\n|  | type | name | label |\n|  | text | a | A |\n\
+             |  | integer | b | B |\n|  | decimal | c | C |\n|  | date | d | D |\n\
+             |  | geopoint | e | E |\n|  | barcode | f | F |\n",
+            // Logic columns, recovered as literal XPath (note the `>`).
+            "| survey |\n|  | type | name | label | relevant | constraint | required |\n\
+             |  | integer | age | Age |  | . > 0 | yes |\n\
+             |  | text | nm | Nm | /data/age > 18 |  |  |\n",
+            // Messages, hint and appearance.
+            "| survey |\n|  | type | name | label | hint | appearance | constraint | constraint_message |\n\
+             |  | integer | q | Q | Enter a number | multiline | . > 0 | Must be positive |\n",
+            // A note re-emits identically (read-only string input).
+            "| survey |\n|  | type | name | label |\n|  | note | n | Read me |\n|  | text | q | Q |\n",
+        ];
+        for md in forms {
+            let (first, second) = round_trip(md);
+            assert_eq!(first, second, "round-trip differs for form:\n{md}");
+        }
     }
 }

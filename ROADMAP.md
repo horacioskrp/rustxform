@@ -129,12 +129,17 @@ C14N) before it is checked off.
 Grow the reverse parser from a flat subset toward a faithful inverse, locked in
 by a round-trip property test.
 
-- [ ] Full binds: `relevant`, `constraint`, `required`, `readonly`,
-      `calculate`, constraint/required messages, preloads
-- [ ] XPath → `${name}` recovery (inverse of `rustxform-expr`, via a nodeset index)
+- [x] Full binds: `relevant`, `constraint`, `required`, `read_only`,
+      `calculate`, constraint/required messages (recovered as literal XPath)
+- [x] Recover inline `label`/`hint` and control `appearance`
+- [x] Round-trip property test: `emit == emit∘parse∘emit` holds byte-identically
+      on flat single-language forms (types, logic, messages, hint, appearance)
+- [ ] XPath → `${name}` recovery (cosmetic; round-trip already holds via
+      literal pass-through, since the emitter only rewrites `${…}`)
 - [ ] Reconstruct the group/repeat tree (`<group>`/`<repeat>`, `jr:template`)
 - [ ] Reconstruct choice lists from secondary instances + `<itemset>`/`<item>`
+- [ ] Recover data-only nodes (`calculate`, preloads) from the instance + binds
 - [ ] Decode `<itext>` into multilingual `label`/`hint`, `languages`,
       `default_language`, media
 - [ ] Recover settings: `version`, `style`, `instance_name`; entities from binds
-- [ ] **GO:** round-trip `XForm → Survey → XForm` is idempotent on the corpus
+- [ ] **GO:** round-trip is idempotent on the full corpus (not just flat forms)
