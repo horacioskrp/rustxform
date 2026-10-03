@@ -13,6 +13,7 @@ rustxform-core.workspace = true
 rustxform-reader.workspace = true
 rustxform-parse.workspace = true
 rustxform-xform.workspace = true
+rustxform-validate.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

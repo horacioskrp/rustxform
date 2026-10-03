@@ -33,17 +33,33 @@ fn main() -> Result<()> {
         fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))
     };
 
-    let xform = match extension.as_str() {
-        "md" => rustxform::convert_markdown(&read_text(&cli.input)?),
-        "csv" => rustxform::convert_csv(&read_text(&cli.input)?),
+    let result = match extension.as_str() {
+        "md" => rustxform::convert_markdown_checked(&read_text(&cli.input)?),
+        "csv" => rustxform::convert_csv_checked(&read_text(&cli.input)?),
         "xlsx" | "xls" => {
             let bytes =
                 fs::read(&cli.input).with_context(|| format!("reading {}", cli.input.display()))?;
-            rustxform::convert_xlsx(&bytes)
+            rustxform::convert_xlsx_checked(&bytes)
         }
         other => bail!("unsupported input extension: .{other} (use .md, .csv, .xlsx or .xls)"),
-    }
-    .context("converting XLSForm to XForm")?;
+    };
+
+    let xform = match result {
+        Ok(xform) => xform,
+        Err(rustxform::BuildError::Invalid(errors)) => {
+            for error in &errors {
+                eprintln!("error: {error}");
+            }
+            bail!(
+                "{} validation error(s) in {}",
+                errors.len(),
+                cli.input.display()
+            );
+        }
+        Err(error) => {
+            return Err(anyhow::Error::new(error).context("converting XLSForm to XForm"));
+        }
+    };
 
     let output = cli
         .output

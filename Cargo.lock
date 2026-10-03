@@ -351,6 +351,7 @@ dependencies = [
  "rustxform-core",
  "rustxform-parse",
  "rustxform-reader",
+ "rustxform-validate",
  "rustxform-xform",
  "similar",
  "thiserror",
@@ -396,6 +397,9 @@ name = "rustxform-validate"
 version = "0.1.0"
 dependencies = [
  "rustxform-core",
+ "rustxform-expr",
+ "rustxform-parse",
+ "rustxform-reader",
  "thiserror",
 ]
 

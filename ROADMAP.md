@@ -13,7 +13,7 @@ golden tests (compile a form, compare the XForm after XML canonicalization).
 | 4 | Expressions & `${ref}` rewriting | ✅ done |
 | 5 | Multilingual labels & advanced columns | ✅ done |
 | 6 | XLSX/XLS/CSV readers & CLI parity | ✅ done |
-| 7 | Validations | ⬜ |
+| 7 | Validations | ✅ done |
 
 ## Phase 0 — Workspace & oracle ✅
 
@@ -66,8 +66,11 @@ A flat form with `text` / `integer` / `note` questions compiles end to end.
 - [x] CLI dispatches by extension (`.md` / `.csv` / `.xlsx` / `.xls`)
 - [x] **GO:** `.xlsx` and `.csv` fixtures produce the same XForm as Markdown
 
-## Phase 7 — Validations
+## Phase 7 — Validations ✅
 
-- [ ] Unique names, broken references, choices, geo, range, settings
-- [ ] Clear, actionable error messages
-- [ ] **GO:** validation fixtures pass → v1 release
+- [x] Duplicate/empty node names, broken `${…}` references, unknown choice lists
+- [x] Clear, actionable error messages; `*_checked` APIs and CLI rejection
+- [x] **GO:** valid forms pass, invalid forms are rejected with the right error
+
+v1 scope complete. Possible follow-ups: `constraint_message`/media columns,
+`parameters`, `${}` label outputs, geo/range validations, JSON warnings.

@@ -10,7 +10,12 @@ description = "Form validations for rustxform, added from Phase 7."
 
 [dependencies]
 rustxform-core.workspace = true
+rustxform-expr.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+rustxform-reader.workspace = true
+rustxform-parse.workspace = true
 
 [lints]
 workspace = true

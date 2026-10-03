@@ -46,9 +46,31 @@ pub fn rewrite_references(expr: &str, resolve: impl Fn(&str) -> Option<String>) 
     out
 }
 
+/// Collect the names referenced as `${name}` in an expression, in order.
+#[must_use]
+pub fn reference_names(expr: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut rest = expr;
+    while let Some(start) = rest.find("${") {
+        let after = &rest[start + 2..];
+        let Some(end) = after.find('}') else {
+            break;
+        };
+        names.push(after[..end].to_owned());
+        rest = &after[end + 1..];
+    }
+    names
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collects_reference_names() {
+        assert_eq!(reference_names("${a} + ${b} - 1"), ["a", "b"]);
+        assert!(reference_names("1 + 2").is_empty());
+    }
 
     #[test]
     fn substitutes_known_references_with_padding() {
