@@ -88,8 +88,9 @@ v1 scope complete.
 - [x] Settings: `version`, `instance_name`, `style`
 
 Also done: `select_*_from_file`, `last-saved#`, multilingual
-`constraint_message`/`required_message`, `choice_filter` (cascading selects).
+`constraint_message`/`required_message`, `choice_filter` (cascading selects),
+multilingual `media::`, and language-tag warnings (ISO 639-1 list + 3-letter
+shape; unlimited languages per form).
 
-Intentionally out of scope: multilingual `media::` (niche), IANA language-tag
-validation (needs the full registry), `choices` header-coherence warnings
-(would flag legitimate cascade columns). Possible next: published crate.
+Intentionally out of scope: `choices` header-coherence warnings (would flag
+legitimate cascade columns). Possible next: published crate.
