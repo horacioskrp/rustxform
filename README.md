@@ -1,107 +1,158 @@
 # rustxform
 
-A fast, dependency-light **Rust** library and CLI that compiles an **XLSForm**
-(a spreadsheet-based form definition) into an **XForm** — the XML form format
-consumed by mobile and web data-collection tools.
+`rustxform` is a Rust library and command-line tool that converts spreadsheets
+following the [XLSForm standard](https://xlsform.org/) into
+[XForms](https://getodk.github.io/xforms-spec/) — the XML form definition
+consumed by mobile and web data-collection tools. It is a small native binary
+with no runtime dependencies, suitable for embedding in services and build
+pipelines.
 
-> **Status:** 🟢 **v0.1.0 released.** Reads Markdown, CSV and XLSX/XLS and
-> compiles question types, selects, groups, repeats, `${…}` logic, multilingual
-> `itext`, media, metadata/actions, Entities and validations — verified
-> byte-identical to the reference compiler on a 53-form golden corpus (see
-> [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md)).
+## Project status
 
-## Why
+🟢 **v0.1.0 released.** `rustxform` compiles the common XLSForm surface and is
+verified byte-identical to the reference compiler on a golden corpus (see
+[Conformance](#conformance) and [CHANGELOG.md](CHANGELOG.md)).
 
-XLSForm is a convenient, human-friendly way to author complex forms — nested
-groups, repeats, skip logic, constraints, calculations, multilingual labels — in
-an ordinary spreadsheet. Those spreadsheets are compiled into XForms before they
-can run on devices. `rustxform` performs that compilation as a small native
-binary with no runtime dependencies, suitable for embedding in services and
-build pipelines.
+Current goals:
 
-## What it does
+- Broaden coverage of advanced widgets and validation messages.
+- Keep strict parity with the reference compiler as it evolves.
+- Grow the reverse direction (`xform2json`) toward full round-tripping.
 
-```
-.xlsx / .xls / .csv / .md   →   XForm XML
-      (XLSForm)                  (W3C-derived form definition)
-```
+It is part of the DCOLLECT effort to build data-collection tooling in Rust.
 
-The compiler runs in three stages:
+## Using `rustxform`
 
-1. **Read** the workbook into rows (Markdown tables first; XLSX/XLS/CSV next).
-2. **Parse** the rows into a normalized survey model (types, choices, groups,
-   repeats, settings).
-3. **Emit** the XForm XML: the model, bindings and body controls.
+There are three main ways to use `rustxform`:
 
-## Install
+- The command-line tool `rustxform`, helpful for troubleshooting or as part of a
+  form-creation pipeline.
+- As a library, imported by another Rust project.
+- Embedded in a service (the compiler is pure Rust, no external runtime).
 
-```bash
-cargo install --path crates/rustxform-cli
-```
+### Running the latest release
 
-## Usage
+Install the CLI with Cargo:
 
-```bash
-rustxform form.md form.xml      # compile an XLSForm to an XForm
-rustxform form.md               # writes form.xml next to the input
-```
+    cargo install --git https://github.com/horacioskrp/rustxform rustxform-cli
 
-As a library:
+Then compile a form (the reader is chosen by extension — `.md`, `.csv`,
+`.xlsx`, `.xls`):
+
+    rustxform path_to_form.xlsx [output_path.xml]
+    rustxform form.md            # writes form.xml next to the input
+    rustxform form.xlsx out.xml --json          # machine-readable report
+    rustxform form.xlsx out.xml --odk-validate ODK-Validate.jar
+
+The minimum supported Rust version is 1.85 (edition 2024).
+
+### Running from local source
+
+    # Get a copy of the repository.
+    git clone https://github.com/horacioskrp/rustxform.git
+    cd rustxform
+
+    # Build and run the CLI.
+    cargo run -p rustxform-cli -- form.md form.xml
+
+### As a library
+
+Add the facade crate and call one of the `convert_*` functions:
 
 ```rust
 let xform = rustxform::convert_markdown(markdown_source)?;
+let xform = rustxform::convert_xlsx(&bytes)?;
+
+// Validate before emitting, and surface warnings:
+let built = rustxform::build_markdown(markdown_source)?;
+println!("{}", built.xform);
+for warning in &built.warnings {
+    eprintln!("warning: {warning}");
+}
 ```
 
-## Workspace layout
+## Development
 
-| Crate                | Responsibility                                        |
-| -------------------- | ----------------------------------------------------- |
-| `rustxform-core`     | Data model: `Survey`, `Question`, `Settings`          |
-| `rustxform-reader`   | Read a workbook into rows (Markdown; XLSX/XLS/CSV)    |
-| `rustxform-parse`    | Normalize rows into the survey model                  |
-| `rustxform-expr`     | Tokenize expressions, rewrite `${ref}` into XPath     |
-| `rustxform-xform`    | Emit XForm XML                                         |
-| `rustxform-validate` | Form validations                                      |
-| `rustxform-xform2json` | Reverse: parse an XForm back into the survey model  |
-| `rustxform`          | End-to-end facade (`convert_markdown`) + tests        |
-| `rustxform-cli`      | Command-line interface (`--json`, `--odk-validate`)   |
+Build, test, lint and format with the standard Cargo commands:
 
-## Build & test
-
-```bash
-cargo build
-cargo test
-cargo clippy --all-targets -- -D warnings
-cargo fmt --all --check
-```
+    cargo build
+    cargo test
+    cargo clippy --all-targets -- -D warnings
+    cargo fmt --all --check
 
 > **Note for some Windows hosts.** If Smart App Control / WDAC blocks the native
-> build (`os error 4551`) or no linker is available, build inside the Rust Docker
-> image — `scripts/docker-dev.ps1` wraps `cargo` with cached volumes:
+> build (`os error 4551`) or no linker is available, build inside the Rust
+> Docker image — `scripts/docker-dev.ps1` wraps `cargo` with cached volumes:
 >
 > ```powershell
 > ./scripts/docker-dev.ps1 test
 > ```
 
-## Conformance
+### Writing tests
 
-Correctness is driven by golden tests: an input form is compiled and the result
-is compared to an expected XForm after XML canonicalization (attribute order and
-insignificant whitespace are ignored). Fixtures live under
-`crates/rustxform/tests/fixtures/` as `<name>.md` (input) + `<name>.xml`
-(golden) pairs, and `cargo test` compiles every pair and checks it — no Python
-needed to run the tests.
-
-### Regenerating the corpus
+Correctness is driven by a golden corpus. Each fixture is a pair under
+`crates/rustxform/tests/fixtures/`: `<name>.md` (the XLSForm, written as a
+Markdown table) and `<name>.xml` (the expected XForm). The test runner
+`golden_fixtures_match_reference` compiles every `.md` and compares it to its
+golden after XML C14N canonicalization (attribute order and insignificant
+whitespace are ignored). Adding a case is just dropping the two files in — no
+test code to write.
 
 The golden `.xml` files are produced by the reference compiler
-([pyxform](https://github.com/XLSForm/pyxform)) and committed; a pair is only
-written if, after C14N canonicalization, it is byte-identical to rustxform's own
-output. rustxform cannot be its own oracle, so regeneration depends on pyxform +
-lxml (Python). The committed `scripts/gen_corpus.py` drives it; see its module
-docstring for the exact two-step Docker commands (build the CLI binary, then run
-the script with `RUSTXFORM_BIN` pointing at it). Day to day you never need this —
-only when adding or updating corpus forms.
+([pyxform](https://github.com/XLSForm/pyxform)) and a pair is committed only
+when it is byte-identical to `rustxform`'s own output, so the compiler cannot be
+its own oracle. Running the tests needs no Python; regenerating the corpus does
+— see `scripts/gen_corpus.py` and [Conformance](#conformance).
+
+## Documentation
+
+For developers, `rustxform` uses Rust doc comments and type signatures; browse
+them with `cargo doc --open`. Contributors should also be familiar with the
+XForms specification (<https://getodk.github.io/xforms-spec/>).
+
+For form authors, the input format is documented at:
+
+- [XLSForm docs](https://xlsform.org/)
+- the [ROADMAP](ROADMAP.md) (what is and isn't supported yet)
+- the [CHANGELOG](CHANGELOG.md)
+
+## Workspace layout
+
+| Crate                  | Responsibility                                      |
+| ---------------------- | --------------------------------------------------- |
+| `rustxform-core`       | Data model: `Survey`, `Question`, `Settings`        |
+| `rustxform-reader`     | Read a workbook into rows (Markdown, CSV, XLSX/XLS) |
+| `rustxform-parse`      | Normalize rows into the survey model                |
+| `rustxform-expr`       | Rewrite `${ref}` references into XPath               |
+| `rustxform-xform`      | Emit XForm XML                                       |
+| `rustxform-validate`   | Form validations and warnings                       |
+| `rustxform-xform2json` | Reverse: parse an XForm back into the survey model  |
+| `rustxform`            | End-to-end facade (`convert_markdown`, `build_*`)   |
+| `rustxform-cli`        | Command-line interface (`--json`, `--odk-validate`) |
+
+## Conformance
+
+`rustxform` is checked against the reference compiler on a 53-form golden corpus
+(all byte-identical after C14N) plus a 32/32 type cross-check. To regenerate the
+corpus (needs Docker, pyxform and lxml):
+
+    # 1. Build the CLI binary (Linux) into a shared path:
+    docker run --rm -v "${PWD}:/work" -w /work \
+      -v rustxform-target:/tmp/target -e CARGO_TARGET_DIR=/tmp/target \
+      rust:latest bash -c "cargo build -q -p rustxform-cli && cp /tmp/target/debug/rustxform /work/.rustxform-bin"
+
+    # 2. Generate and verify the fixtures:
+    docker run --rm -v "${PWD}:/work" -w /work -e RUSTXFORM_BIN=/work/.rustxform-bin \
+      python:3.12-slim bash -c "pip install --quiet pyxform openpyxl lxml && python scripts/gen_corpus.py"
+
+## Releasing
+
+1. Ensure `cargo test`, `cargo clippy --all-targets -- -D warnings` and
+   `cargo fmt --all --check` are green.
+2. Update `CHANGELOG.md` with the new version's notes.
+3. Bump `version` in the workspace `Cargo.toml`.
+4. Tag and push: `git tag -a vX.Y.Z -m "rustxform vX.Y.Z" && git push origin vX.Y.Z`.
+5. Draft a GitHub release from the tag using the changelog notes.
 
 ## License
 
