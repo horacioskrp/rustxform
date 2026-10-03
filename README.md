@@ -9,7 +9,7 @@ pipelines.
 
 ## Project status
 
-🟢 **v0.1.0 released.** `rustxform` compiles the common XLSForm surface and is
+🟢 **v0.1.1 released.** `rustxform` compiles the common XLSForm surface and is
 verified byte-identical to the reference compiler on a golden corpus (see
 [Conformance](#conformance) and [CHANGELOG.md](CHANGELOG.md)).
 

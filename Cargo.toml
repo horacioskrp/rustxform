@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
@@ -12,13 +12,13 @@ repository = "https://github.com/horacioskrp/rustxform"
 
 [workspace.dependencies]
 # Internal crates
-rustxform-core = { path = "crates/rustxform-core", version = "0.1.0" }
-rustxform-reader = { path = "crates/rustxform-reader", version = "0.1.0" }
-rustxform-parse = { path = "crates/rustxform-parse", version = "0.1.0" }
-rustxform-expr = { path = "crates/rustxform-expr", version = "0.1.0" }
-rustxform-xform = { path = "crates/rustxform-xform", version = "0.1.0" }
-rustxform-validate = { path = "crates/rustxform-validate", version = "0.1.0" }
-rustxform = { path = "crates/rustxform", version = "0.1.0" }
+rustxform-core = { path = "crates/rustxform-core", version = "0.1.1" }
+rustxform-reader = { path = "crates/rustxform-reader", version = "0.1.1" }
+rustxform-parse = { path = "crates/rustxform-parse", version = "0.1.1" }
+rustxform-expr = { path = "crates/rustxform-expr", version = "0.1.1" }
+rustxform-xform = { path = "crates/rustxform-xform", version = "0.1.1" }
+rustxform-validate = { path = "crates/rustxform-validate", version = "0.1.1" }
+rustxform = { path = "crates/rustxform", version = "0.1.1" }
 
 # External
 thiserror = "2"

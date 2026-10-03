@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to adhere
 to [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] - 2026-10-03
+
+Documentation release — no functional or API changes.
+
+### Changed
+
+- Each crate now ships its own detailed `README.md` (role, pipeline position,
+  public API, a runnable example), shown on its crates.io page.
+- Added crates.io metadata (`keywords`, `categories`) to every crate.
+
 ## [0.1.0] - 2026-10-03
 
 First release: a Rust library and CLI that compile an XLSForm into an XForm,
@@ -52,4 +62,5 @@ verified against the reference compiler on a golden corpus.
 - A few exotic widgets are not implemented; unknown types degrade to a plain
   string bind rather than failing.
 
+[0.1.1]: https://github.com/horacioskrp/rustxform/releases/tag/v0.1.1
 [0.1.0]: https://github.com/horacioskrp/rustxform/releases/tag/v0.1.0
