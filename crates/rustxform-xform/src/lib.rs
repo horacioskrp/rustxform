@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
-use rustxform_core::{Container, Control, Kind, Localized, Node, Question, Survey};
+use rustxform_core::{Container, Control, Kind, Localized, Media, Node, Question, Survey};
 use rustxform_expr::rewrite_references;
 
 /// Name of the primary instance root element.
@@ -214,7 +214,7 @@ fn write_itext_questions(
                     } else {
                         q.label.single().unwrap_or_default()
                     };
-                    write_label_text(w, &format!("{path}:label"), value, &q.media)?;
+                    write_label_text(w, &format!("{path}:label"), value, &q.media, lang, ml)?;
                 }
                 if hint_uses_itext(q, ml) {
                     write_text(
@@ -237,21 +237,31 @@ fn write_label_text(
     w: &mut W,
     id: &str,
     value: &str,
-    media: &[(String, String)],
+    media: &[Media],
+    lang: &str,
+    ml: bool,
 ) -> Result<(), XformError> {
     let mut text = BytesStart::new("text");
     text.push_attribute(("id", id));
     w.write_event(Event::Start(text))?;
     text_element(w, "value", value)?;
-    for (form, file) in media {
-        let directory = match form.as_str() {
+    for entry in media {
+        let file = if ml {
+            entry.files.for_lang(lang)
+        } else {
+            entry.files.single()
+        };
+        let Some(file) = file else {
+            continue;
+        };
+        let directory = match entry.form.as_str() {
             "image" => "images",
             "audio" => "audio",
             "video" => "video",
             other => other,
         };
         let mut element = BytesStart::new("value");
-        element.push_attribute(("form", form.as_str()));
+        element.push_attribute(("form", entry.form.as_str()));
         w.write_event(Event::Start(element))?;
         w.write_event(Event::Text(BytesText::new(&format!(
             "jr://{directory}/{file}"

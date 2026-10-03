@@ -106,6 +106,16 @@ pub struct Preload {
     pub params: &'static str,
 }
 
+/// A label media attachment: a form (`image`/`audio`/`video`) and its file(s),
+/// which may be single- or multi-language.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Media {
+    /// The media form: `image`, `audio` or `video`.
+    pub form: String,
+    /// Filenames, single (unqualified) or per-language.
+    pub files: Localized,
+}
+
 /// The XForm mapping for a built-in question type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Builtin {
@@ -148,8 +158,8 @@ pub struct Question {
     pub required_message: Localized,
     /// Parsed `parameters` column, as `(key, value)` pairs.
     pub parameters: Vec<(String, String)>,
-    /// Label media, as `(form, file)` pairs (e.g. `("image", "logo.png")`).
-    pub media: Vec<(String, String)>,
+    /// Label media (images/audio/video), possibly per-language.
+    pub media: Vec<Media>,
     /// Default value (`default` column), placed in the primary instance.
     pub default: Option<String>,
     /// `choice_filter` expression for cascading selects, if any.

@@ -5,7 +5,7 @@
 //! (with `::Lang` qualifiers) and collects the form's languages.
 
 use rustxform_core::{
-    Choice, ChoiceList, Container, Kind, Localized, Node, Question, Settings, Survey,
+    Choice, ChoiceList, Container, Kind, Localized, Media, Node, Question, Settings, Survey,
     resolve_builtin,
 };
 use rustxform_reader::{Sheet, Workbook};
@@ -106,12 +106,66 @@ fn localized(cols: &LocColumns, row: &[String]) -> Localized {
     }
 }
 
+/// A parsed `media::form[::lang]` column.
+struct MediaColumn {
+    form: String,
+    lang: Option<String>,
+    index: usize,
+}
+
+/// Locate the `media::…` columns and parse their form and optional language.
+fn media_columns(header: &[String]) -> Vec<MediaColumn> {
+    header
+        .iter()
+        .enumerate()
+        .filter_map(|(index, head)| {
+            let rest = head.strip_prefix("media::")?;
+            let (form, lang) = match rest.split_once("::") {
+                Some((form, lang)) => (form.trim().to_owned(), Some(lang.trim().to_owned())),
+                None => (rest.trim().to_owned(), None),
+            };
+            Some(MediaColumn { form, lang, index })
+        })
+        .collect()
+}
+
+/// Build a row's media list, grouping files by form (single or per-language).
+fn row_media(cols: &[MediaColumn], row: &[String]) -> Vec<Media> {
+    let mut media: Vec<Media> = Vec::new();
+    for col in cols {
+        let value = row.get(col.index).map_or("", String::as_str);
+        if value.is_empty() {
+            continue;
+        }
+        let entry = match media.iter().position(|m| m.form == col.form) {
+            Some(i) => &mut media[i],
+            None => {
+                media.push(Media {
+                    form: col.form.clone(),
+                    files: Localized::default(),
+                });
+                media.last_mut().expect("just pushed")
+            }
+        };
+        match &col.lang {
+            None => entry.files.default = Some(value.to_owned()),
+            Some(lang) => entry.files.langs.push((lang.clone(), value.to_owned())),
+        }
+    }
+    media
+}
+
 /// Collect declared languages in order across the survey and choices sheets.
 fn collect_languages(survey: Option<&Sheet>, choices: Option<&Sheet>) -> Vec<String> {
     let mut languages: Vec<String> = Vec::new();
     let mut add = |header: &[String], bases: &[&str]| {
         for head in header {
-            if let Some((base, lang)) = head.split_once("::") {
+            // `media::form::lang` carries the language after a second `::`.
+            let parsed = match head.strip_prefix("media::") {
+                Some(rest) => rest.split_once("::").map(|(_, lang)| ("media", lang)),
+                None => head.split_once("::"),
+            };
+            if let Some((base, lang)) = parsed {
                 if bases.contains(&base.trim()) {
                     let lang = lang.trim().to_owned();
                     if !languages.contains(&lang) {
@@ -124,7 +178,13 @@ fn collect_languages(survey: Option<&Sheet>, choices: Option<&Sheet>) -> Vec<Str
     if let Some(header) = survey.and_then(|s| s.rows.first()) {
         add(
             header,
-            &["label", "hint", "constraint_message", "required_message"],
+            &[
+                "label",
+                "hint",
+                "constraint_message",
+                "required_message",
+                "media",
+            ],
         );
     }
     if let Some(header) = choices.and_then(|s| s.rows.first()) {
@@ -162,7 +222,7 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
     let count_col = column("repeat_count");
     let label_cols = loc_columns(header, "label");
     let hint_cols = loc_columns(header, "hint");
-    let media_cols = loc_columns(header, "media");
+    let media_cols = media_columns(header);
 
     let mut root: Vec<Node> = Vec::new();
     let mut stack: Vec<Frame> = Vec::new();
@@ -209,14 +269,7 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
                     constraint_message: localized(&cmsg_cols, row),
                     required_message: localized(&rmsg_cols, row),
                     parameters: parse_parameters(cell(params_col)),
-                    media: media_cols
-                        .langs
-                        .iter()
-                        .filter_map(|(form, i)| {
-                            let file = cell(Some(*i));
-                            (!file.is_empty()).then(|| (form.clone(), file.to_owned()))
-                        })
-                        .collect(),
+                    media: row_media(&media_cols, row),
                     default: optional(cell(default_col)),
                     choice_filter: optional(cell(filter_col)),
                 };

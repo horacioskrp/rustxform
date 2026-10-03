@@ -70,6 +70,7 @@ golden!(conformance_select_from_file_form, "ext");
 golden!(conformance_last_saved_form, "lastsaved");
 golden!(conformance_multilingual_messages_form, "mlmsg");
 golden!(conformance_cascading_select_form, "cascade");
+golden!(conformance_multilingual_media_form, "mmedia");
 
 #[test]
 fn xlsx_reader_matches_markdown_golden() {
