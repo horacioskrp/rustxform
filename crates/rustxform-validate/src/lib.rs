@@ -64,6 +64,9 @@ pub enum Warning {
     /// A survey column header is not recognized (possibly a typo).
     #[error("unrecognized survey column `{0}`")]
     UnknownColumn(String),
+    /// A declared language has no recognized subtag code.
+    #[error("language `{0}` has no recognized subtag code (e.g. `English (en)`)")]
+    UnknownLanguageTag(String),
 }
 
 /// Validate a [`Survey`], returning all blocking problems (empty when valid).
@@ -100,8 +103,49 @@ pub fn warnings(workbook: &Workbook, survey: &Survey) -> Vec<Warning> {
         }
     }
 
+    for language in &survey.languages {
+        if !has_known_subtag(language) {
+            warnings.push(Warning::UnknownLanguageTag(language.clone()));
+        }
+    }
+
     warnings
 }
+
+/// A language declares a recognized subtag as `Name (code)`: a 2-letter
+/// ISO 639-1 code, or any 3-letter code (ISO 639-2/3, accepted by shape).
+fn has_known_subtag(language: &str) -> bool {
+    let Some(code) = language
+        .rsplit_once('(')
+        .and_then(|(_, rest)| rest.split_once(')'))
+        .map(|(code, _)| code.trim().to_ascii_lowercase())
+    else {
+        return false;
+    };
+    match code.len() {
+        2 => ISO_639_1.contains(&code.as_str()),
+        3 => code.chars().all(|c| c.is_ascii_alphabetic()),
+        _ => false,
+    }
+}
+
+/// ISO 639-1 two-letter language codes.
+#[rustfmt::skip]
+const ISO_639_1: &[&str] = &[
+    "aa","ab","ae","af","ak","am","an","ar","as","av","ay","az","ba","be","bg",
+    "bh","bi","bm","bn","bo","br","bs","ca","ce","ch","co","cr","cs","cu","cv",
+    "cy","da","de","dv","dz","ee","el","en","eo","es","et","eu","fa","ff","fi",
+    "fj","fo","fr","fy","ga","gd","gl","gn","gu","gv","ha","he","hi","ho","hr",
+    "ht","hu","hy","hz","ia","id","ie","ig","ii","ik","io","is","it","iu","ja",
+    "jv","ka","kg","ki","kj","kk","kl","km","kn","ko","kr","ks","ku","kv","kw",
+    "ky","la","lb","lg","li","ln","lo","lt","lu","lv","mg","mh","mi","mk","ml",
+    "mn","mr","ms","mt","my","na","nb","nd","ne","ng","nl","nn","no","nr","nv",
+    "ny","oc","oj","om","or","os","pa","pi","pl","ps","pt","qu","rm","rn","ro",
+    "ru","rw","sa","sc","sd","se","sg","si","sk","sl","sm","sn","so","sq","sr",
+    "ss","st","su","sv","sw","ta","te","tg","th","ti","tk","tl","tn","to","tr",
+    "ts","tt","tw","ty","ug","uk","ur","uz","ve","vi","vo","wa","wo","xh","yi",
+    "yo","za","zh","zu",
+];
 
 /// Gather node names, reporting empty and duplicate names as it goes.
 fn collect_names(nodes: &[Node], names: &mut HashSet<String>, errors: &mut Vec<ValidationError>) {
@@ -368,5 +412,21 @@ mod tests {
         let warnings = warnings(&wb, &survey);
         assert!(warnings.contains(&Warning::UnknownColumn("relevnt".to_owned())));
         assert!(warnings.contains(&Warning::MissingSetting("form_id".to_owned())));
+    }
+
+    #[test]
+    fn warns_on_language_without_known_subtag() {
+        let md = "\
+| survey |      |      |                |                     |
+|        | type | name | label::English | label::French (fr)  |
+|        | text | q    | Hi             | Salut               |
+| settings |            |         |
+|          | form_title | form_id |
+|          | T          | t       |
+";
+        let (wb, survey) = parse(md);
+        let warnings = warnings(&wb, &survey);
+        assert!(warnings.contains(&Warning::UnknownLanguageTag("English".to_owned())));
+        assert!(!warnings.contains(&Warning::UnknownLanguageTag("French (fr)".to_owned())));
     }
 }
