@@ -380,6 +380,9 @@ fn write_choice_instances(
                     text_element(w, "label", label)?;
                 }
             }
+            for (key, value) in &choice.extra {
+                text_element(w, key, value)?;
+            }
             close(w, "item")?;
         }
         close(w, "root")?;
@@ -796,9 +799,21 @@ fn write_select(
     write_label(w, question, reference, ml, index)?;
     write_hint(w, question, reference, ml)?;
 
+    // A `choice_filter` adds an XPath predicate to the itemset nodeset.
+    let predicate = question
+        .choice_filter
+        .as_ref()
+        .map(|filter| {
+            let empty: Vec<Step> = Vec::new();
+            let context = index.get(&question.name).unwrap_or(&empty);
+            let resolve = |name: &str| resolve_ref(index, context, name);
+            format!("[{}]", rewrite_references(filter, resolve))
+        })
+        .unwrap_or_default();
+
     // Raw content keeps the apostrophes in the nodeset literal (not `&apos;`).
     let itemset = BytesStart::from_content(
-        format!("itemset nodeset=\"instance('{list}')/root/item\""),
+        format!("itemset nodeset=\"instance('{list}')/root/item{predicate}\""),
         "itemset".len(),
     );
     w.write_event(Event::Start(itemset))?;

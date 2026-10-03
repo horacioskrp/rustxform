@@ -181,6 +181,7 @@ fn check_question(
         &q.required,
         &q.readonly,
         &q.calculation,
+        &q.choice_filter,
     ]
     .into_iter()
     .flatten()

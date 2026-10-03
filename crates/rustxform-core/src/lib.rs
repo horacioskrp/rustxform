@@ -152,6 +152,8 @@ pub struct Question {
     pub media: Vec<(String, String)>,
     /// Default value (`default` column), placed in the primary instance.
     pub default: Option<String>,
+    /// `choice_filter` expression for cascading selects, if any.
+    pub choice_filter: Option<String>,
 }
 
 impl Question {
@@ -172,6 +174,8 @@ pub struct Choice {
     pub name: String,
     /// Display label (single- or multi-language).
     pub label: Localized,
+    /// Extra columns `(name, value)` for cascading filters, in header order.
+    pub extra: Vec<(String, String)>,
 }
 
 /// A named list of choices from the `choices` sheet.

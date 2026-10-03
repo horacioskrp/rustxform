@@ -158,6 +158,7 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
     let rmsg_cols = loc_columns(header, "required_message");
     let params_col = column("parameters");
     let default_col = column("default");
+    let filter_col = column("choice_filter");
     let count_col = column("repeat_count");
     let label_cols = loc_columns(header, "label");
     let hint_cols = loc_columns(header, "hint");
@@ -217,6 +218,7 @@ fn parse_nodes(sheet: &Sheet) -> Vec<Node> {
                         })
                         .collect(),
                     default: optional(cell(default_col)),
+                    choice_filter: optional(cell(filter_col)),
                 };
                 place(&mut root, &mut stack, Node::Question(question));
             }
@@ -286,6 +288,20 @@ fn parse_choices(sheet: &Sheet) -> Vec<ChoiceList> {
     let name_col = column("name");
     let label_cols = loc_columns(header, "label");
 
+    // Extra columns (anything but list_name/name/label*) become item children
+    // for cascading filters.
+    let mut excluded: Vec<usize> = [list_col, name_col, label_cols.plain]
+        .into_iter()
+        .flatten()
+        .collect();
+    excluded.extend(label_cols.langs.iter().map(|(_, i)| *i));
+    let extra_cols: Vec<(usize, &str)> = header
+        .iter()
+        .enumerate()
+        .filter(|(i, h)| !excluded.contains(i) && !h.is_empty())
+        .map(|(i, h)| (i, h.as_str()))
+        .collect();
+
     let mut lists: Vec<ChoiceList> = Vec::new();
     for row in data {
         let cell = |col: Option<usize>| col.and_then(|i| row.get(i)).map_or("", String::as_str);
@@ -297,6 +313,13 @@ fn parse_choices(sheet: &Sheet) -> Vec<ChoiceList> {
         let choice = Choice {
             name: cell(name_col).to_owned(),
             label: localized(&label_cols, row),
+            extra: extra_cols
+                .iter()
+                .filter_map(|(i, key)| {
+                    let value = cell(Some(*i));
+                    (!value.is_empty()).then(|| ((*key).to_owned(), value.to_owned()))
+                })
+                .collect(),
         };
         match lists.iter_mut().find(|l| l.name == list) {
             Some(existing) => existing.items.push(choice),
