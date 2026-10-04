@@ -1,0 +1,4 @@
+# Normalize line endings: store LF in git and check out LF on every platform,
+# so tooling (e.g. `cargo publish` from a Linux container on a Windows checkout)
+# never sees the tree as dirty over CRLF differences.
+* text=auto eol=lf
