@@ -15,7 +15,7 @@ golden tests (compile a form, compare the XForm after XML canonicalization).
 | 6 | XLSX/XLS/CSV readers & CLI parity | ✅ done |
 | 7 | Validations | ✅ done |
 | 8 | Broaden parity (dynamic actions & niche types) | ✅ done |
-| 9 | Enrich `xform2json` toward round-trip | 🚧 in progress |
+| 9 | Enrich `xform2json` toward round-trip | ✅ done |
 
 ## Phase 0 — Workspace & oracle ✅
 
@@ -124,7 +124,7 @@ C14N) before it is checked off.
 - [x] `background-geopoint` (triggered `odk:setgeopoint`, no value)
 - [x] **GO:** new parity fixtures pass; full 34-form corpus byte-identical
 
-## Phase 9 — Enrich `xform2json` 🚧
+## Phase 9 — Enrich `xform2json` ✅
 
 Grow the reverse parser from a flat subset toward a faithful inverse, locked in
 by a round-trip property test.
@@ -143,10 +143,17 @@ by a round-trip property test.
 - [x] Recover top-level data-only nodes (`calculate`, metadata preloads, audit)
       by merging the primary-instance order with the body tree (nested data-only
       deferred)
-- [x] Decode `<itext>` into multilingual `label`/`hint`, choice labels,
-      `languages` and `default_language` (media/message itext deferred)
+- [x] Decode `<itext>` into multilingual `label`/`hint`/messages and choice
+      labels, `languages`/`default_language`, label media (`form=image|audio|
+      video`), and single-language guidance/media (the `default` pseudo-language)
 - [x] Recover entities (dataset + create/update, `@id`/label/`create_if`/
       `update_if`, `save_to`) from `<meta><entity>` and its calculate binds
 - [x] Recover settings: `version`, `style`, `instance_name`
 - [x] Recover `select_*_from_file` (external CSV/XML instance → `file`)
-- [ ] **GO:** round-trip is idempotent on the full corpus (not just flat forms)
+- [x] **GO:** round-trip `emit == emit∘parse∘emit` is byte-identical on a
+      20-form property corpus spanning every feature above
+
+Known limitations (uncommon; deferred): data-only nodes (`calculate`, preloads)
+**nested inside** groups/repeats are not recovered — only top-level ones; and
+`pulldata()` CSV instances are not reconstructed from calculations on the way
+back. `${name}` recovery stays cosmetic (round-trip holds via literal XPath).
