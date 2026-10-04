@@ -46,6 +46,7 @@ pub fn xform_to_survey(xml: &str) -> Result<Survey, Xform2JsonError> {
     let body = collect_body_nodes(xml, &binds)?;
     let order = collect_instance_order(xml)?;
     let choices = collect_choices(xml)?;
+    let itext = collect_itext(xml)?;
 
     let mut survey = Survey::default();
     survey.settings.title = title;
@@ -53,7 +54,159 @@ pub fn xform_to_survey(xml: &str) -> Result<Survey, Xform2JsonError> {
     survey.children = merge_top_level(order, body, &binds);
     survey.choices = choices;
     survey.audit = binds.contains_key(&format!("/{ROOT}/meta/audit"));
+    apply_itext(&mut survey, &itext);
     Ok(survey)
+}
+
+/// Decoded `<itext>` translations: the languages in order, the default one, and
+/// each text id's value per language (media/`form=` values are not decoded).
+#[derive(Default)]
+struct Itext {
+    languages: Vec<String>,
+    default_language: Option<String>,
+    values: HashMap<String, Vec<(String, String)>>,
+}
+
+/// Parse the `<itext>` block. A lone `default` pseudo-language (used by
+/// single-language forms that still need itext for guidance/media) is treated
+/// as non-multilingual and cleared.
+fn collect_itext(xml: &str) -> Result<Itext, Xform2JsonError> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+
+    let mut itext = Itext::default();
+    let mut in_itext = false;
+    let mut lang: Option<String> = None;
+    let mut text_id: Option<String> = None;
+    let mut in_value = false;
+    let mut skip_value = false;
+    let mut buffer = String::new();
+
+    loop {
+        match read(&mut reader)? {
+            Event::Eof => break,
+            Event::Start(e) => match local_name(e.name().as_ref()).as_str() {
+                "itext" => in_itext = true,
+                "translation" if in_itext => {
+                    let value = attr(&e, "lang").unwrap_or_default();
+                    if attr(&e, "default").is_some() {
+                        itext.default_language = Some(value.clone());
+                    }
+                    if !itext.languages.contains(&value) {
+                        itext.languages.push(value.clone());
+                    }
+                    lang = Some(value);
+                }
+                "text" if in_itext => text_id = attr(&e, "id"),
+                "value" if in_itext => {
+                    if attr(&e, "form").is_some() {
+                        skip_value = true;
+                    } else {
+                        in_value = true;
+                        buffer.clear();
+                    }
+                }
+                _ => {}
+            },
+            Event::Empty(e)
+                if in_itext
+                    && local_name(e.name().as_ref()) == "value"
+                    && attr(&e, "form").is_none() =>
+            {
+                record_itext(&mut itext, &text_id, &lang, String::new());
+            }
+            Event::Text(t) if in_value => buffer.push_str(&t.unescape().map_err(xml_err)?),
+            Event::End(e) => match local_name(e.name().as_ref()).as_str() {
+                "itext" => in_itext = false,
+                "value" if in_value => {
+                    record_itext(&mut itext, &text_id, &lang, std::mem::take(&mut buffer));
+                    in_value = false;
+                }
+                "value" if skip_value => skip_value = false,
+                "text" => text_id = None,
+                "translation" => lang = None,
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
+    if itext.languages == ["default"] {
+        itext = Itext::default();
+    }
+    Ok(itext)
+}
+
+/// Record a `(lang, value)` for the current text id.
+fn record_itext(itext: &mut Itext, id: &Option<String>, lang: &Option<String>, value: String) {
+    if let (Some(id), Some(lang)) = (id, lang) {
+        itext
+            .values
+            .entry(id.clone())
+            .or_default()
+            .push((lang.clone(), value));
+    }
+}
+
+/// Apply decoded translations to a multilingual survey's questions and choices.
+fn apply_itext(survey: &mut Survey, itext: &Itext) {
+    if itext.languages.is_empty() {
+        return;
+    }
+    survey.languages = itext.languages.clone();
+    survey.settings.default_language = itext.default_language.clone();
+    apply_itext_nodes(&mut survey.children, &format!("/{ROOT}"), itext);
+    for list in &mut survey.choices {
+        for (i, item) in list.items.iter_mut().enumerate() {
+            if let Some(values) = itext.values.get(&format!("{}-{}", list.name, i)) {
+                item.label = localized_from(values, &itext.languages);
+            }
+        }
+    }
+}
+
+fn apply_itext_nodes(nodes: &mut [Node], parent: &str, itext: &Itext) {
+    for node in nodes {
+        match node {
+            Node::Question(q) => {
+                let path = format!("{parent}/{}", q.name);
+                let langs = &itext.languages;
+                if let Some(v) = itext.values.get(&format!("{path}:label")) {
+                    q.label = localized_from(v, langs);
+                }
+                if let Some(v) = itext.values.get(&format!("{path}:hint")) {
+                    q.hint = localized_from(v, langs);
+                }
+                if let Some(v) = itext.values.get(&format!("{path}:jr:constraintMsg")) {
+                    q.constraint_message = localized_from(v, langs);
+                }
+                if let Some(v) = itext.values.get(&format!("{path}:jr:requiredMsg")) {
+                    q.required_message = localized_from(v, langs);
+                }
+            }
+            Node::Group(c) | Node::Repeat(c) => {
+                apply_itext_nodes(&mut c.children, &format!("{parent}/{}", c.name), itext);
+            }
+        }
+    }
+}
+
+/// Build a multilingual [`Localized`] from `(lang, value)` pairs, in the survey's
+/// language order.
+fn localized_from(values: &[(String, String)], languages: &[String]) -> Localized {
+    let langs = languages
+        .iter()
+        .filter_map(|lang| {
+            values
+                .iter()
+                .find(|(vlang, _)| vlang == lang)
+                .map(|(_, value)| (lang.clone(), value.clone()))
+        })
+        .collect();
+    Localized {
+        default: None,
+        langs,
+    }
 }
 
 /// Primary-instance root element name.
@@ -264,6 +417,8 @@ fn collect_choices(xml: &str) -> Result<Vec<ChoiceList>, Xform2JsonError> {
                         match name.as_str() {
                             "name" => choice.name = value,
                             "label" => choice.label.default = Some(value),
+                            // Multilingual items reference their label via itext.
+                            "itextId" => {}
                             other => choice.extra.push((other.to_owned(), value)),
                         }
                     }
@@ -446,13 +601,15 @@ fn collect_body_nodes(
                     if let Some(p) = current.as_mut() {
                         p.list = attr(&e, "nodeset").and_then(|n| instance_id(&n));
                     }
-                } else if name == "label" {
+                } else if name == "label" && attr(&e, "ref").is_none() {
+                    // An itext `<label ref="jr:itext(…)"/>` carries no inline
+                    // text; the value is recovered from <itext> instead.
                     if current.is_some() && !in_itemset {
                         in_label = true;
                     } else if current.is_none() && !stack.is_empty() {
                         in_group_label = true;
                     }
-                } else if name == "hint" && current.is_some() {
+                } else if name == "hint" && current.is_some() && attr(&e, "ref").is_none() {
                     in_hint = true;
                 }
             }
@@ -761,6 +918,16 @@ mod tests {
             "| survey |\n|  | type | name | label |\n|  | start | start |  |\n\
              |  | end | end |  |\n|  | today | today |  |\n|  | deviceid | dev |  |\n\
              |  | text | q | Q |\n",
+            // Multilingual label/hint + a select with multilingual choices.
+            "| survey |\n\
+             |  | type | name | label::English (en) | label::French (fr) | hint::English (en) | hint::French (fr) |\n\
+             |  | text | n | Name | Nom | Enter name | Saisir le nom |\n\
+             |  | select_one yn | c | Color | Couleur |  |  |\n\
+             | choices |\n\
+             |  | list_name | name | label::English (en) | label::French (fr) |\n\
+             |  | yn | r | Red | Rouge |\n|  | yn | b | Blue | Bleu |\n\
+             | settings |\n\
+             |  | form_title | form_id | default_language |\n|  | F | f | English (en) |\n",
         ];
         for md in forms {
             let (first, second) = round_trip(md);

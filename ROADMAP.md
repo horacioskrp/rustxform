@@ -143,7 +143,7 @@ by a round-trip property test.
 - [x] Recover top-level data-only nodes (`calculate`, metadata preloads, audit)
       by merging the primary-instance order with the body tree (nested data-only
       deferred)
-- [ ] Decode `<itext>` into multilingual `label`/`hint`, `languages`,
-      `default_language`, media
+- [x] Decode `<itext>` into multilingual `label`/`hint`, choice labels,
+      `languages` and `default_language` (media/message itext deferred)
 - [ ] Recover settings: `version`, `style`, `instance_name`; entities from binds
 - [ ] **GO:** round-trip is idempotent on the full corpus (not just flat forms)
