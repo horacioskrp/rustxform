@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to adhere
 to [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-10-04
+
+Reverse-parser completeness and project governance.
+
+### Changed
+
+- `rustxform-xform2json` now recovers data-only nodes (`calculate`, metadata
+  preloads, audit) at **any depth** — including nested inside groups and
+  repeats — by merging the primary-instance tree with the body tree, and
+  `pulldata()` CSV instances round-trip (regenerated from the recovered
+  calculations). The reverse parser is now a complete inverse of the forward
+  compiler over the supported surface; the round-trip property corpus covers
+  23 forms.
+
+### Added
+
+- `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1) and
+  `SECURITY.md`; crates.io/docs.rs/CI/license badges in the README.
+
 ## [0.2.0] - 2026-10-04
 
 Broader XLSForm parity and a near-complete reverse parser.
@@ -87,6 +106,7 @@ verified against the reference compiler on a golden corpus.
 - A few exotic widgets are not implemented; unknown types degrade to a plain
   string bind rather than failing.
 
+[0.2.1]: https://github.com/horacioskrp/rustxform/releases/tag/v0.2.1
 [0.2.0]: https://github.com/horacioskrp/rustxform/releases/tag/v0.2.0
 [0.1.1]: https://github.com/horacioskrp/rustxform/releases/tag/v0.1.1
 [0.1.0]: https://github.com/horacioskrp/rustxform/releases/tag/v0.1.0

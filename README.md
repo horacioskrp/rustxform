@@ -14,7 +14,7 @@ pipelines.
 
 ## Project status
 
-🟢 **v0.2.0 released.** `rustxform` compiles a broad XLSForm surface, verified
+🟢 **v0.2.1 released.** `rustxform` compiles a broad XLSForm surface, verified
 byte-identical to the reference compiler on a 34-form golden corpus, and reverses
 XForms back to the model (`xform2json`) with a byte-identical round-trip property
 test (see [Conformance](#conformance) and [CHANGELOG.md](CHANGELOG.md)).
