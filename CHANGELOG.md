@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to adhere
 to [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-10-04
+
+Broader XLSForm parity and a near-complete reverse parser.
+
+### Added
+
+- **Parity (compile)**: `hidden`; `trigger` + `calculation` dynamic recalculation
+  (`odk:setvalue`); `select_* … or_other`; `guidance_hint`; encrypted forms
+  (`public_key` → `<submission base64RsaPublicKey>`); submission settings
+  (`submission_url` / `auto_send` / `auto_delete`); upload `appearance` and image
+  `max-pixels`; `pulldata()` CSV instances; `background-geopoint`. The golden
+  corpus grows to 34 forms, all byte-identical after C14N.
+- **Reverse (`xform2json`)**: recovers settings (version/style/instance_name),
+  the group/repeat tree (with `repeat_count`), full bind logic and messages,
+  `appearance`, inline choice lists and `select_*_from_file`, top-level data-only
+  nodes (`calculate`, metadata preloads, audit), entities (create/update,
+  `save_to`), and `<itext>` — multilingual labels/hints/messages/choice labels,
+  label media, and single-language guidance/media. Locked by a round-trip
+  property test (`emit == emit∘parse∘emit`, byte-identical) over 20 forms.
+
+### Known limitations
+
+- Reverse parsing does not recover data-only nodes nested inside groups/repeats,
+  or reconstruct `pulldata()` CSV instances.
+
 ## [0.1.1] - 2026-10-03
 
 Documentation release — no functional or API changes.
@@ -62,5 +87,6 @@ verified against the reference compiler on a golden corpus.
 - A few exotic widgets are not implemented; unknown types degrade to a plain
   string bind rather than failing.
 
+[0.2.0]: https://github.com/horacioskrp/rustxform/releases/tag/v0.2.0
 [0.1.1]: https://github.com/horacioskrp/rustxform/releases/tag/v0.1.1
 [0.1.0]: https://github.com/horacioskrp/rustxform/releases/tag/v0.1.0
