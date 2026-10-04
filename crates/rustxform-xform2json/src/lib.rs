@@ -13,8 +13,10 @@
 //! expressions through unchanged, these forms round-trip byte-identically:
 //! `emit(xform_to_survey(emit(survey))) == emit(survey)` (see the property test).
 //!
-//! Not recovered (uncommon): data-only nodes nested inside groups/repeats, and
-//! `pulldata()` CSV instances. Use it to import or inspect an XForm.
+//! Data-only nodes (`calculate`, preloads) are placed at any depth by merging
+//! the primary-instance tree with the body tree, and `pulldata()` CSV instances
+//! regenerate from the recovered calculations. Use it to import or inspect an
+//! XForm.
 
 use std::collections::HashMap;
 
@@ -48,7 +50,7 @@ pub fn xform_to_survey(xml: &str) -> Result<Survey, Xform2JsonError> {
     let meta = collect_metadata(xml)?;
     let extern_files = collect_external_files(xml)?;
     let body = collect_body_nodes(xml, &binds, &extern_files)?;
-    let order = collect_instance_order(xml)?;
+    let inst = parse_instance_tree(xml)?;
     let choices = collect_choices(xml)?;
     let itext = collect_itext(xml)?;
 
@@ -60,7 +62,7 @@ pub fn xform_to_survey(xml: &str) -> Result<Survey, Xform2JsonError> {
     survey.settings.instance_name = binds
         .get(&format!("/{ROOT}/meta/instanceName"))
         .and_then(|b| b.calculate.clone());
-    survey.children = merge_top_level(order, body, &binds);
+    survey.children = merge_tree(&inst, body, &format!("/{ROOT}"), &binds);
     survey.choices = choices;
     survey.audit = binds.contains_key(&format!("/{ROOT}/meta/audit"));
     survey.entity = collect_entity(xml, &binds)?;
@@ -335,22 +337,44 @@ fn build_media(entries: &[(String, String, String)], ml: bool) -> Vec<Media> {
 /// Primary-instance root element name.
 const ROOT: &str = "data";
 
-/// Merge the body-control tree with the primary-instance order, inserting
-/// top-level data-only nodes (`calculate`, metadata preloads) that carry no
-/// body control, at their correct positions. Nested data-only nodes are not
-/// yet recovered.
-fn merge_top_level(
-    order: Vec<String>,
+/// A node of the primary instance tree (a leaf, or a container with children),
+/// used to place data-only nodes that carry no body control.
+struct InstNode {
+    name: String,
+    children: Vec<InstNode>,
+}
+
+/// Merge the body-control tree with the primary-instance tree, inserting
+/// data-only nodes (`calculate`, metadata preloads) at every level — including
+/// nested inside groups and repeats — at their correct positions.
+fn merge_tree(
+    inst: &[InstNode],
     body: Vec<Node>,
+    parent: &str,
     binds: &HashMap<String, Bind>,
 ) -> Vec<Node> {
-    let mut result = Vec::with_capacity(order.len());
+    let mut result = Vec::with_capacity(inst.len());
     let mut body = body.into_iter().peekable();
-    for name in order {
-        if body.peek().is_some_and(|n| node_name(n) == name.as_str()) {
-            result.push(body.next().expect("peeked"));
-        } else if let Some(bind) = binds.get(&format!("/{ROOT}/{name}")) {
-            result.push(Node::Question(data_only_question(name, bind)));
+    for node in inst {
+        if body
+            .peek()
+            .is_some_and(|n| node_name(n) == node.name.as_str())
+        {
+            let mut taken = body.next().expect("peeked");
+            // Recurse into a matched group/repeat to place its nested children.
+            if !node.children.is_empty() {
+                if let Node::Group(c) | Node::Repeat(c) = &mut taken {
+                    let children = std::mem::take(&mut c.children);
+                    let path = format!("{parent}/{}", c.name);
+                    c.children = merge_tree(&node.children, children, &path, binds);
+                }
+            }
+            result.push(taken);
+        } else if node.children.is_empty() {
+            // A leaf with no body control is a data-only node (recovered by bind).
+            if let Some(bind) = binds.get(&format!("{parent}/{}", node.name)) {
+                result.push(Node::Question(data_only_question(node.name.clone(), bind)));
+            }
         }
     }
     result.extend(body);
@@ -414,17 +438,25 @@ fn preload_token(preload: &str, params: &str) -> &'static str {
     }
 }
 
-/// Collect the primary instance's top-level child element names in order,
-/// skipping `meta`, synthetic `…_count` nodes, and the duplicate repeat
-/// instance (keeping the `jr:template` occurrence only).
-fn collect_instance_order(xml: &str) -> Result<Vec<String>, Xform2JsonError> {
+/// An open instance container on the parse stack.
+struct IFrame {
+    name: String,
+    children: Vec<InstNode>,
+    skip_next: Option<String>,
+    is_template: bool,
+}
+
+/// Parse the primary instance into an [`InstNode`] tree (the top-level nodes),
+/// skipping `meta`, synthetic `…_count` nodes, and the duplicate live instance
+/// of each repeat (keeping the `jr:template` occurrence only).
+fn parse_instance_tree(xml: &str) -> Result<Vec<InstNode>, Xform2JsonError> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
 
-    let mut names = Vec::new();
     let mut in_primary = false;
-    let mut depth = 0i32;
-    let mut skip_next: Option<String> = None;
+    let mut skip_depth = 0i32;
+    let mut stack: Vec<IFrame> = Vec::new();
+    let mut result: Vec<InstNode> = Vec::new();
 
     loop {
         match read(&mut reader)? {
@@ -434,50 +466,80 @@ fn collect_instance_order(xml: &str) -> Result<Vec<String>, Xform2JsonError> {
                 if !in_primary {
                     if name == "instance" && attr(&e, "id").is_none() && attr(&e, "src").is_none() {
                         in_primary = true;
-                        depth = 0;
                     }
                     continue;
                 }
-                if depth == 1 {
+                if skip_depth > 0 {
+                    skip_depth += 1;
+                } else if stack.is_empty() {
+                    // The primary instance root element (`<data>`).
+                    stack.push(frame(name, false));
+                } else if name == "meta" || is_live_twin(&mut stack, &name) {
+                    skip_depth = 1;
+                } else {
                     let is_template = attr(&e, "template").is_some();
-                    record_top_level(&name, is_template, &mut names, &mut skip_next);
+                    stack.push(frame(name, is_template));
                 }
-                depth += 1;
             }
-            Event::Empty(e) if in_primary && depth == 1 => {
+            Event::Empty(e) if in_primary && skip_depth == 0 && !stack.is_empty() => {
                 let name = local_name(e.name().as_ref());
-                record_top_level(&name, false, &mut names, &mut skip_next);
+                if !name.ends_with("_count") && !is_live_twin(&mut stack, &name) {
+                    stack
+                        .last_mut()
+                        .expect("non-empty")
+                        .children
+                        .push(InstNode {
+                            name,
+                            children: Vec::new(),
+                        });
+                }
             }
             Event::End(e) if in_primary => {
-                if local_name(e.name().as_ref()) == "instance" {
+                if skip_depth > 0 {
+                    skip_depth -= 1;
+                } else if local_name(e.name().as_ref()) == "instance" {
                     in_primary = false;
-                } else {
-                    depth -= 1;
+                } else if let Some(frame) = stack.pop() {
+                    let node = InstNode {
+                        name: frame.name,
+                        children: frame.children,
+                    };
+                    match stack.last_mut() {
+                        Some(parent) => {
+                            if frame.is_template {
+                                parent.skip_next = Some(node.name.clone());
+                            }
+                            parent.children.push(node);
+                        }
+                        None => result = node.children,
+                    }
                 }
             }
             _ => {}
         }
     }
-    Ok(names)
+    Ok(result)
 }
 
-/// Record a top-level instance node name, honoring the skip rules.
-fn record_top_level(
-    name: &str,
-    is_template: bool,
-    names: &mut Vec<String>,
-    skip_next: &mut Option<String>,
-) {
-    if name == "meta" || name.ends_with("_count") {
-        return;
+/// A fresh instance frame.
+fn frame(name: String, is_template: bool) -> IFrame {
+    IFrame {
+        name,
+        children: Vec::new(),
+        skip_next: None,
+        is_template,
     }
-    if skip_next.as_deref() == Some(name) {
-        *skip_next = None; // the live twin of a repeat template
-        return;
-    }
-    names.push(name.to_owned());
-    if is_template {
-        *skip_next = Some(name.to_owned());
+}
+
+/// Whether `name` is the live twin of the repeat template just closed in the
+/// current frame (consuming the pending `skip_next`).
+fn is_live_twin(stack: &mut [IFrame], name: &str) -> bool {
+    match stack.last_mut() {
+        Some(top) if top.skip_next.as_deref() == Some(name) => {
+            top.skip_next = None;
+            true
+        }
+        _ => false,
     }
 }
 
@@ -1136,6 +1198,19 @@ mod tests {
             // Single-language label media (itext, non-multilingual).
             "| survey |\n|  | type | name | label | media::image |\n\
              |  | note | p | Look | pic.png |\n\
+             | settings |\n|  | form_title | form_id |\n|  | F | f |\n",
+            // A data-only calculate nested inside a group.
+            "| survey |\n|  | type | name | label | calculation |\n\
+             |  | begin_group | g | G |  |\n|  | integer | a | A |  |\n\
+             |  | calculate | dbl |  | ${a} * 2 |\n|  | end_group |  |  |  |\n",
+            // A data-only calculate nested inside a repeat.
+            "| survey |\n|  | type | name | label | calculation |\n\
+             |  | begin_repeat | r | R |  |\n|  | integer | x | X |  |\n\
+             |  | calculate | y |  | ${x} + 1 |\n|  | end_repeat |  |  |  |\n",
+            // pulldata(): the CSV instance is regenerated from the recovered calc.
+            "| survey |\n|  | type | name | label | calculation |\n\
+             |  | text | id | ID |  |\n\
+             |  | calculate | nm |  | pulldata('fruits', 'name', 'id_key', ${id}) |\n\
              | settings |\n|  | form_title | form_id |\n|  | F | f |\n",
         ];
         for md in forms {

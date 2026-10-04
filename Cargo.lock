@@ -345,7 +345,7 @@ dependencies = [
 
 [[package]]
 name = "rustxform"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "quick-xml 0.37.5",
  "rustxform-core",
@@ -359,7 +359,7 @@ dependencies = [
 
 [[package]]
 name = "rustxform-cli"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -369,15 +369,15 @@ dependencies = [
 
 [[package]]
 name = "rustxform-core"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "rustxform-expr"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "rustxform-parse"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "rustxform-core",
  "rustxform-reader",
@@ -386,7 +386,7 @@ dependencies = [
 
 [[package]]
 name = "rustxform-reader"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "calamine",
  "csv",
@@ -395,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "rustxform-validate"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "rustxform-core",
  "rustxform-expr",
@@ -406,7 +406,7 @@ dependencies = [
 
 [[package]]
 name = "rustxform-xform"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "quick-xml 0.37.5",
  "rustxform-core",
@@ -416,7 +416,7 @@ dependencies = [
 
 [[package]]
 name = "rustxform-xform2json"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "quick-xml 0.37.5",
  "rustxform-core",

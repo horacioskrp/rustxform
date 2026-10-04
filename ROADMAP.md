@@ -140,9 +140,8 @@ by a round-trip property test.
       literal pass-through, since the emitter only rewrites `${…}`)
 - [x] Reconstruct inline choice lists from secondary instances (name/label +
       cascade `extra` columns); select questions keep their list id
-- [x] Recover top-level data-only nodes (`calculate`, metadata preloads, audit)
-      by merging the primary-instance order with the body tree (nested data-only
-      deferred)
+- [x] Recover data-only nodes (`calculate`, metadata preloads, audit) at any
+      depth by merging the primary-instance tree with the body tree
 - [x] Decode `<itext>` into multilingual `label`/`hint`/messages and choice
       labels, `languages`/`default_language`, label media (`form=image|audio|
       video`), and single-language guidance/media (the `default` pseudo-language)
@@ -151,9 +150,9 @@ by a round-trip property test.
 - [x] Recover settings: `version`, `style`, `instance_name`
 - [x] Recover `select_*_from_file` (external CSV/XML instance → `file`)
 - [x] **GO:** round-trip `emit == emit∘parse∘emit` is byte-identical on a
-      20-form property corpus spanning every feature above
+      23-form property corpus spanning every feature above (incl. nested
+      data-only and `pulldata()`)
 
-Known limitations (uncommon; deferred): data-only nodes (`calculate`, preloads)
-**nested inside** groups/repeats are not recovered — only top-level ones; and
-`pulldata()` CSV instances are not reconstructed from calculations on the way
-back. `${name}` recovery stays cosmetic (round-trip holds via literal XPath).
+`xform2json` is a complete inverse of the forward compiler for the supported
+surface. The one non-reversal is cosmetic: `${name}` references come back as
+literal XPath, which the emitter passes through unchanged, so round-trip holds.

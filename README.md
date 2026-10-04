@@ -1,5 +1,10 @@
 # rustxform
 
+[![crates.io](https://img.shields.io/crates/v/rustxform.svg)](https://crates.io/crates/rustxform)
+[![docs.rs](https://img.shields.io/docsrs/rustxform)](https://docs.rs/rustxform)
+[![CI](https://github.com/horacioskrp/rustxform/actions/workflows/ci.yml/badge.svg)](https://github.com/horacioskrp/rustxform/actions/workflows/ci.yml)
+[![license](https://img.shields.io/crates/l/rustxform.svg)](#license)
+
 `rustxform` is a Rust library and command-line tool that converts spreadsheets
 following the [XLSForm standard](https://xlsform.org/) into
 [XForms](https://getodk.github.io/xforms-spec/) — the XML form definition
@@ -9,7 +14,7 @@ pipelines.
 
 ## Project status
 
-🟢 **v0.2.0 released.** `rustxform` compiles a broad XLSForm surface, verified
+🟢 **v0.2.1 released.** `rustxform` compiles a broad XLSForm surface, verified
 byte-identical to the reference compiler on a 34-form golden corpus, and reverses
 XForms back to the model (`xform2json`) with a byte-identical round-trip property
 test (see [Conformance](#conformance) and [CHANGELOG.md](CHANGELOG.md)).
