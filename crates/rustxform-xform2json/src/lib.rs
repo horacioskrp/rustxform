@@ -42,15 +42,21 @@ const CONTROLS: &[&str] = &[
 /// Returns [`Xform2JsonError::Xml`] if the document is not well-formed.
 pub fn xform_to_survey(xml: &str) -> Result<Survey, Xform2JsonError> {
     let binds = collect_binds(xml)?;
-    let (title, form_id) = collect_metadata(xml)?;
-    let body = collect_body_nodes(xml, &binds)?;
+    let meta = collect_metadata(xml)?;
+    let extern_files = collect_external_files(xml)?;
+    let body = collect_body_nodes(xml, &binds, &extern_files)?;
     let order = collect_instance_order(xml)?;
     let choices = collect_choices(xml)?;
     let itext = collect_itext(xml)?;
 
     let mut survey = Survey::default();
-    survey.settings.title = title;
-    survey.settings.form_id = form_id;
+    survey.settings.title = meta.title;
+    survey.settings.form_id = meta.form_id;
+    survey.settings.version = meta.version;
+    survey.settings.style = meta.style;
+    survey.settings.instance_name = binds
+        .get(&format!("/{ROOT}/meta/instanceName"))
+        .and_then(|b| b.calculate.clone());
     survey.children = merge_top_level(order, body, &binds);
     survey.choices = choices;
     survey.audit = binds.contains_key(&format!("/{ROOT}/meta/audit"));
@@ -530,34 +536,72 @@ fn collect_binds(xml: &str) -> Result<HashMap<String, Bind>, Xform2JsonError> {
     Ok(binds)
 }
 
-/// Form `title` (from `<h:title>`) and `form_id` (the primary instance root id).
-fn collect_metadata(xml: &str) -> Result<(Option<String>, Option<String>), Xform2JsonError> {
+/// Form-level metadata recovered from outside the binds/body.
+#[derive(Default)]
+struct Meta {
+    title: Option<String>,
+    form_id: Option<String>,
+    version: Option<String>,
+    style: Option<String>,
+}
+
+/// Recover the `title` (`<h:title>`), the `form_id` and `version` (the primary
+/// instance root's `id`/`version`), and the `style` (the body `class`).
+fn collect_metadata(xml: &str) -> Result<Meta, Xform2JsonError> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
-    let mut title = None;
-    let mut form_id = None;
+    let mut meta = Meta::default();
     let mut in_title = false;
     let mut expect_root = false;
     loop {
         match read(&mut reader)? {
             Event::Eof => break,
-            Event::Start(e) => match local_name(e.name().as_ref()).as_str() {
+            Event::Start(e) | Event::Empty(e) => match local_name(e.name().as_ref()).as_str() {
                 "title" => in_title = true,
-                "instance" if attr(&e, "id").is_none() && form_id.is_none() => expect_root = true,
+                "body" => meta.style = attr(&e, "class"),
+                "instance" if attr(&e, "id").is_none() && meta.form_id.is_none() => {
+                    expect_root = true;
+                }
                 _ if expect_root => {
-                    form_id = attr(&e, "id");
+                    meta.form_id = attr(&e, "id");
+                    meta.version = attr(&e, "version");
                     expect_root = false;
                 }
                 _ => {}
             },
             Event::Text(t) if in_title => {
-                title = Some(t.unescape().map_err(xml_err)?.into_owned());
+                meta.title = Some(t.unescape().map_err(xml_err)?.into_owned());
             }
             Event::End(e) if local_name(e.name().as_ref()) == "title" => in_title = false,
             _ => {}
         }
     }
-    Ok((title, form_id))
+    Ok(meta)
+}
+
+/// Map each external instance id to its file name, from
+/// `<instance id="L" src="jr://file[-csv]/NAME"/>`. These back
+/// `select_*_from_file` questions.
+fn collect_external_files(xml: &str) -> Result<HashMap<String, String>, Xform2JsonError> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    let mut files = HashMap::new();
+    loop {
+        match read(&mut reader)? {
+            Event::Eof => break,
+            Event::Start(e) | Event::Empty(e) if local_name(e.name().as_ref()) == "instance" => {
+                if let (Some(id), Some(src)) = (attr(&e, "id"), attr(&e, "src")) {
+                    if src.starts_with("jr://file/") || src.starts_with("jr://file-csv/") {
+                        if let Some(file) = src.rsplit('/').next() {
+                            files.insert(id, file.to_owned());
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(files)
 }
 
 /// A body control being assembled.
@@ -588,6 +632,7 @@ struct Frame {
 fn collect_body_nodes(
     xml: &str,
     binds: &HashMap<String, Bind>,
+    extern_files: &HashMap<String, String>,
 ) -> Result<Vec<Node>, Xform2JsonError> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
@@ -697,7 +742,8 @@ fn collect_body_nodes(
                 }
                 name if CONTROLS.contains(&name) => {
                     if let Some(p) = current.take() {
-                        push_node(Node::Question(to_question(p, binds)), &mut stack, &mut root);
+                        let question = to_question(p, binds, extern_files);
+                        push_node(Node::Question(question), &mut stack, &mut root);
                     }
                 }
                 _ => {}
@@ -722,11 +768,20 @@ fn last_segment(reference: &str) -> String {
 }
 
 /// Build a [`Question`] from an assembled control and the binds.
-fn to_question(p: Partial, binds: &HashMap<String, Bind>) -> Question {
+fn to_question(
+    p: Partial,
+    binds: &HashMap<String, Bind>,
+    extern_files: &HashMap<String, String>,
+) -> Question {
     let name = p.reference.rsplit('/').next().unwrap_or("").to_owned();
     let bind = binds.get(&p.reference).cloned().unwrap_or_default();
     let bind_type = bind.ty.as_deref().unwrap_or("string");
-    let kind = infer_kind(&p.tag, bind_type, p.list, p.mediatype.as_deref());
+    // A select whose list has an external instance is a `select_*_from_file`.
+    let file = p.list.as_ref().and_then(|l| extern_files.get(l).cloned());
+    let kind = match infer_kind(&p.tag, bind_type, p.list, p.mediatype.as_deref()) {
+        Kind::Select { select, list, .. } => Kind::Select { select, list, file },
+        other => other,
+    };
 
     Question {
         kind,
@@ -979,6 +1034,14 @@ mod tests {
             "| survey |\n|  | type | name | label | save_to |\n|  | text | tid | Tid |  |\n\
              |  | integer | c | C | circ |\n\
              | entities |\n|  | dataset | entity_id | label |\n|  | trees | ${tid} | ${c} |\n\
+             | settings |\n|  | form_title | form_id |\n|  | F | f |\n",
+            // Settings: version (on <data>), instance_name bind, style (body class).
+            "| survey |\n|  | type | name | label |\n|  | text | q | Q |\n\
+             | settings |\n|  | form_title | form_id | version | instance_name | style |\n\
+             |  | F | f | 2024 | q | pages |\n",
+            // select_one_from_file: external CSV instance, no inline choices.
+            "| survey |\n|  | type | name | label |\n\
+             |  | select_one_from_file cities.csv | city | City |\n\
              | settings |\n|  | form_title | form_id |\n|  | F | f |\n",
         ];
         for md in forms {

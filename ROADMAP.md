@@ -147,5 +147,6 @@ by a round-trip property test.
       `languages` and `default_language` (media/message itext deferred)
 - [x] Recover entities (dataset + create/update, `@id`/label/`create_if`/
       `update_if`, `save_to`) from `<meta><entity>` and its calculate binds
-- [ ] Recover settings: `version`, `style`, `instance_name`
+- [x] Recover settings: `version`, `style`, `instance_name`
+- [x] Recover `select_*_from_file` (external CSV/XML instance → `file`)
 - [ ] **GO:** round-trip is idempotent on the full corpus (not just flat forms)
