@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 use rustxform_core::{
-    Choice, ChoiceList, Container, Kind, Localized, Node, Question, SelectType, Survey,
+    Choice, ChoiceList, Container, Entity, Kind, Localized, Node, Question, SelectType, Survey,
     resolve_builtin,
 };
 
@@ -54,8 +54,49 @@ pub fn xform_to_survey(xml: &str) -> Result<Survey, Xform2JsonError> {
     survey.children = merge_top_level(order, body, &binds);
     survey.choices = choices;
     survey.audit = binds.contains_key(&format!("/{ROOT}/meta/audit"));
+    survey.entity = collect_entity(xml, &binds)?;
     apply_itext(&mut survey, &itext);
     Ok(survey)
+}
+
+/// Reconstruct the [`Entity`] declaration from the `<meta><entity>` element
+/// (for the dataset) and its calculate binds. The `@id` bind carries a
+/// calculate in update mode but not in create mode, which distinguishes them.
+fn collect_entity(
+    xml: &str,
+    binds: &HashMap<String, Bind>,
+) -> Result<Option<Entity>, Xform2JsonError> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    let mut dataset = None;
+    loop {
+        match read(&mut reader)? {
+            Event::Eof => break,
+            Event::Start(e) | Event::Empty(e) if local_name(e.name().as_ref()) == "entity" => {
+                if let Some(value) = attr(&e, "dataset") {
+                    dataset = Some(value);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let Some(dataset) = dataset else {
+        return Ok(None);
+    };
+    let base = format!("/{ROOT}/meta/entity");
+    let calc = |suffix: &str| {
+        binds
+            .get(&format!("{base}/{suffix}"))
+            .and_then(|b| b.calculate.clone())
+    };
+    Ok(Some(Entity {
+        dataset,
+        label: calc("label"),
+        entity_id: calc("@id"),
+        create_if: calc("@create"),
+        update_if: calc("@update"),
+    }))
 }
 
 /// Decoded `<itext>` translations: the languages in order, the default one, and
@@ -270,7 +311,7 @@ fn data_only_question(name: String, bind: &Bind) -> Question {
         media: Vec::new(),
         default: None,
         choice_filter: None,
-        save_to: None,
+        save_to: bind.save_to.clone(),
         trigger: None,
     }
 }
@@ -452,6 +493,7 @@ struct Bind {
     required_msg: Option<String>,
     preload: Option<String>,
     preload_params: Option<String>,
+    save_to: Option<String>,
 }
 
 /// `nodeset` → its [`Bind`], from the model binds.
@@ -477,6 +519,7 @@ fn collect_binds(xml: &str) -> Result<HashMap<String, Bind>, Xform2JsonError> {
                             required_msg: attr(&e, "requiredMsg"),
                             preload: attr(&e, "preload"),
                             preload_params: attr(&e, "preloadParams"),
+                            save_to: attr(&e, "saveto"),
                         },
                     );
                 }
@@ -703,7 +746,7 @@ fn to_question(p: Partial, binds: &HashMap<String, Bind>) -> Question {
         media: Vec::new(),
         default: None,
         choice_filter: None,
-        save_to: None,
+        save_to: bind.save_to,
         trigger: None,
     }
 }
@@ -928,6 +971,15 @@ mod tests {
              |  | yn | r | Red | Rouge |\n|  | yn | b | Blue | Bleu |\n\
              | settings |\n\
              |  | form_title | form_id | default_language |\n|  | F | f | English (en) |\n",
+            // Entity create form (save_to + uuid @id + label).
+            "| survey |\n|  | type | name | label | save_to |\n|  | text | sp | Sp | species |\n\
+             | entities |\n|  | dataset | label |\n|  | trees | ${sp} |\n\
+             | settings |\n|  | form_title | form_id |\n|  | F | f |\n",
+            // Entity update form (entity_id drives base/trunk/branch versions).
+            "| survey |\n|  | type | name | label | save_to |\n|  | text | tid | Tid |  |\n\
+             |  | integer | c | C | circ |\n\
+             | entities |\n|  | dataset | entity_id | label |\n|  | trees | ${tid} | ${c} |\n\
+             | settings |\n|  | form_title | form_id |\n|  | F | f |\n",
         ];
         for md in forms {
             let (first, second) = round_trip(md);

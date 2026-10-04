@@ -145,5 +145,7 @@ by a round-trip property test.
       deferred)
 - [x] Decode `<itext>` into multilingual `label`/`hint`, choice labels,
       `languages` and `default_language` (media/message itext deferred)
-- [ ] Recover settings: `version`, `style`, `instance_name`; entities from binds
+- [x] Recover entities (dataset + create/update, `@id`/label/`create_if`/
+      `update_if`, `save_to`) from `<meta><entity>` and its calculate binds
+- [ ] Recover settings: `version`, `style`, `instance_name`
 - [ ] **GO:** round-trip is idempotent on the full corpus (not just flat forms)
