@@ -150,8 +150,9 @@ by a round-trip property test.
 - [x] Recover settings: `version`, `style`, `instance_name`
 - [x] Recover `select_*_from_file` (external CSV/XML instance → `file`)
 - [x] **GO:** round-trip `emit == emit∘parse∘emit` is byte-identical on a
-      22-form property corpus spanning every feature above (incl. nested data-only)
+      23-form property corpus spanning every feature above (incl. nested
+      data-only and `pulldata()`)
 
-Known limitations (uncommon): `pulldata()` CSV instances are not reconstructed
-from calculations on the way back. `${name}` recovery stays cosmetic (round-trip
-holds via literal XPath pass-through).
+`xform2json` is a complete inverse of the forward compiler for the supported
+surface. The one non-reversal is cosmetic: `${name}` references come back as
+literal XPath, which the emitter passes through unchanged, so round-trip holds.

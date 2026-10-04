@@ -14,8 +14,9 @@
 //! `emit(xform_to_survey(emit(survey))) == emit(survey)` (see the property test).
 //!
 //! Data-only nodes (`calculate`, preloads) are placed at any depth by merging
-//! the primary-instance tree with the body tree. Not recovered (uncommon):
-//! `pulldata()` CSV instances. Use it to import or inspect an XForm.
+//! the primary-instance tree with the body tree, and `pulldata()` CSV instances
+//! regenerate from the recovered calculations. Use it to import or inspect an
+//! XForm.
 
 use std::collections::HashMap;
 
@@ -1206,6 +1207,11 @@ mod tests {
             "| survey |\n|  | type | name | label | calculation |\n\
              |  | begin_repeat | r | R |  |\n|  | integer | x | X |  |\n\
              |  | calculate | y |  | ${x} + 1 |\n|  | end_repeat |  |  |  |\n",
+            // pulldata(): the CSV instance is regenerated from the recovered calc.
+            "| survey |\n|  | type | name | label | calculation |\n\
+             |  | text | id | ID |  |\n\
+             |  | calculate | nm |  | pulldata('fruits', 'name', 'id_key', ${id}) |\n\
+             | settings |\n|  | form_title | form_id |\n|  | F | f |\n",
         ];
         for md in forms {
             let (first, second) = round_trip(md);
